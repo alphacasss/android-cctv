@@ -3,23 +3,23 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:fillViewport="true">
+    android:background="@color/bg_sheet">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingStart="20dp"
+        android:paddingStart="16dp"
         android:paddingTop="12dp"
-        android:paddingEnd="20dp"
-        android:paddingBottom="28dp">
+        android:paddingEnd="16dp"
+        android:paddingBottom="20dp">
 
         <TextView
             android:id="@+id/tvSheetTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="@color/text"
-            android:textSize="18sp"
+            android:textSize="20sp"
             android:textStyle="bold" />
 
         <TextView
@@ -53,7 +53,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="HITAM — aktifkan privacy mask"
+            android:text="HITAM — privacy mask"
             android:textColor="@color/text"
             app:strokeColor="@color/stroke" />
 
@@ -63,7 +63,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="STOP STREAM (sub 102)"
+            android:text="STOP STREAM"
             android:textColor="@color/text"
             app:strokeColor="@color/stroke" />
 
@@ -73,7 +73,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="RTSP OFF — paksa mati"
+            android:text="RTSP OFF"
             android:textColor="@color/warning"
             app:strokeColor="@color/warning" />
 
@@ -101,7 +101,7 @@
             android:id="@+id/tvRtspNote"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="10dp"
             android:background="@drawable/bg_chip"
             android:padding="10dp"
             android:text="NVR: tombol RTSP dan STOP sub-stream tidak dipakai. Mematikan RTSP NVR akan menghentikan semua kanal, jadi hanya KANAL STOP yang tersedia."

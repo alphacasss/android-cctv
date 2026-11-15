@@ -17,8 +17,9 @@
             android:layout_height="?attr/actionBarSize"
             android:background="@color/surface"
             app:navigationIcon="@drawable/ic_arrow_back"
-            app:title="@string/settings_title"
-            app:titleTextColor="@color/text" />
+            app:title="Setelan"
+            app:titleTextColor="@color/text"
+            app:navigationIconTint="@color/text" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
@@ -33,11 +34,13 @@
             android:orientation="vertical"
             android:padding="12dp">
 
+            <!-- Section: Kredensial -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
                 app:cardBackgroundColor="@color/surface"
-                app:cardCornerRadius="12dp"
+                app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
                 app:strokeColor="@color/stroke"
                 app:strokeWidth="1dp">
@@ -51,7 +54,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Kredensial default"
+                        android:text="Kredensial"
                         android:textColor="@color/text"
                         android:textSize="16sp"
                         android:textStyle="bold" />
@@ -59,7 +62,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
+                        android:layout_marginTop="4dp"
                         android:text="Dipakai untuk kamera yang user/password-nya dikosongkan."
                         android:textColor="@color/muted"
                         android:textSize="12sp" />
@@ -68,8 +71,9 @@
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:hint="User">
+                        android:layout_marginTop="12dp"
+                        android:hint="User"
+                        app:startIconDrawable="@drawable/ic_desktop">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/etUser"
@@ -84,6 +88,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:hint="Password"
+                        app:startIconDrawable="@drawable/ic_eye"
                         app:endIconMode="password_toggle">
 
                         <com.google.android.material.textfield.TextInputEditText
@@ -97,8 +102,9 @@
                         android:id="@+id/btnSaveCred"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="Simpan kredensial" />
+                        android:layout_marginTop="12dp"
+                        android:text="Simpan kredensial"
+                        android:textColor="@color/accent" />
 
                     <TextView
                         android:id="@+id/tvEncryption"
@@ -110,12 +116,13 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Section: Kamera -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginBottom="8dp"
                 app:cardBackgroundColor="@color/surface"
-                app:cardCornerRadius="12dp"
+                app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
                 app:strokeColor="@color/stroke"
                 app:strokeWidth="1dp">
@@ -137,10 +144,21 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
+                        android:layout_marginTop="4dp"
                         android:text="Ketuk baris untuk mengubah nama, IP, kanal, NVR, kredensial khusus, serta alamat/port luar (DDNS) bila ingin diakses dari luar rumah."
                         android:textColor="@color/muted"
                         android:textSize="12sp" />
+
+                    <com.google.android.material.card.MaterialButton
+                        android:id="@+id/btnAddCamera"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="+ Tambah Kamera"
+                        android:textColor="@color/accent"
+                        app:icon="@drawable/ic_camera"
+                        app:iconTint="@color/accent"
+                        app:iconSize="20dp" />
 
                     <LinearLayout
                         android:id="@+id/containerCameras"
@@ -153,12 +171,13 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Section: Akses Luar -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginBottom="8dp"
                 app:cardBackgroundColor="@color/surface"
-                app:cardCornerRadius="12dp"
+                app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
                 app:strokeColor="@color/stroke"
                 app:strokeWidth="1dp">
@@ -172,7 +191,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Akses luar jaringan otomatis"
+                        android:text="Akses Luar Jaringan"
                         android:textColor="@color/text"
                         android:textSize="16sp"
                         android:textStyle="bold" />
@@ -180,8 +199,8 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="Saat ponsel di luar rumah, aplikasi memakai alamat publik rumah yang dideteksi saat tersambung ke Wi-Fi rumah. Tidak perlu mengisi IP di tiap kamera."
+                        android:layout_marginTop="4dp"
+                        android:text="Akses dari luar rumah. Gunakan IP publik (otomatis) atau DDNS. Port forwarding di router wajib jika pakai IP publik."
                         android:textColor="@color/muted"
                         android:textSize="12sp" />
 
@@ -189,7 +208,7 @@
                         android:id="@+id/switchRemoteAuto"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="12dp"
                         android:text="Aktifkan otomatis saat di luar jaringan"
                         android:textColor="@color/text" />
 
@@ -207,7 +226,7 @@
                         style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="10dp"
                         android:text="Perbarui IP publik sekarang"
                         android:textColor="@color/text"
                         app:strokeColor="@color/stroke" />
@@ -219,7 +238,8 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:hint="Alamat tetap / DDNS (opsional)"
-                        app:helperText="Kosongkan untuk memakai IP publik otomatis">
+                        app:helperText="Kosongkan untuk memakai IP publik otomatis"
+                        app:startIconDrawable="@drawable/ic_wifi">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/etRemoteHostGlobal"
@@ -241,7 +261,8 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:hint="Port HTTP dasar"
-                            app:helperText="Contoh 8080">
+                            app:helperText="Contoh 8080"
+                            app:startIconDrawable="@drawable/ic_desktop">
 
                             <com.google.android.material.textfield.TextInputEditText
                                 android:id="@+id/etRemoteHttpBase"
@@ -258,7 +279,8 @@
                             android:layout_marginStart="8dp"
                             android:layout_weight="1"
                             android:hint="Port RTSP dasar"
-                            app:helperText="Contoh 8550">
+                            app:helperText="Contoh 8550"
+                            app:startIconDrawable="@drawable/ic_camera">
 
                             <com.google.android.material.textfield.TextInputEditText
                                 android:id="@+id/etRemoteRtspBase"
@@ -272,8 +294,9 @@
                         android:id="@+id/btnSaveRemote"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="Simpan akses luar" />
+                        android:layout_marginTop="12dp"
+                        android:text="Simpan akses luar"
+                        android:textColor="@color/accent" />
 
                     <TextView
                         android:id="@+id/tvRemotePreview"
@@ -287,12 +310,13 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Section: Pemulihan -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginBottom="8dp"
                 app:cardBackgroundColor="@color/surface"
-                app:cardCornerRadius="12dp"
+                app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
                 app:strokeColor="@color/stroke"
                 app:strokeWidth="1dp">
@@ -306,7 +330,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Pemulihan otomatis"
+                        android:text="Pemulihan Otomatis"
                         android:textColor="@color/text"
                         android:textSize="16sp"
                         android:textStyle="bold" />
@@ -315,14 +339,14 @@
                         android:id="@+id/switchAutoRestore"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="12dp"
                         android:text="Pulihkan saat aplikasi ditinggalkan"
                         android:textColor="@color/text" />
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
+                        android:layout_marginTop="4dp"
                         android:text="Aplikasi akan membuka privacy mask, menyalakan stream/RTSP, dan kanal NVR bila ada yang perlu dipulihkan. WorkManager tetap menjalankannya walau aplikasi ditutup."
                         android:textColor="@color/muted"
                         android:textSize="11sp" />
@@ -331,9 +355,10 @@
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="10dp"
                         android:hint="Jeda pemulihan (detik)"
-                        app:helperText="10–3600 detik">
+                        app:helperText="10–3600 detik"
+                        app:startIconDrawable="@drawable/ic_refresh">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/etRestoreDelay"
@@ -358,8 +383,8 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:text="Pulihkan semua sekarang"
-                        app:backgroundTint="@color/warning"
-                        android:textColor="@color/black" />
+                        android:textColor="@color/accent"
+                        app:backgroundTint="@color/warning" />
 
                     <TextView
                         android:id="@+id/tvRestoreInfo"
@@ -372,12 +397,12 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Section: Remote Access -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
                 app:cardBackgroundColor="@color/surface"
-                app:cardCornerRadius="12dp"
+                app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
                 app:strokeColor="@color/stroke"
                 app:strokeWidth="1dp">
@@ -399,7 +424,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
+                        android:layout_marginTop="4dp"
                         android:text="Akses dari luar rumah. Gunakan IP publik (otomatis) atau DDNS. Port forwarding di router wajib jika pakai IP publik."
                         android:textColor="@color/muted"
                         android:textSize="12sp" />
@@ -418,9 +443,9 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:background="@drawable/bg_chip"
-                        android:padding="6dp"
+                        android:padding="8dp"
                         android:textColor="@color/text"
-                        android:textSize="12sp" />
+                        android:textSize="13sp" />
 
                     <TextView
                         android:id="@+id/tvRemoteIpUpdated"
@@ -453,7 +478,7 @@
                         android:id="@+id/switchRemoteVpn"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="12dp"
                         android:text="Pakai VPN (WireGuard/Tailscale) — aman, tak perlu port forward"
                         android:textColor="@color/text" />
 
@@ -481,7 +506,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:gravity="center"
-                android:text="CCTV Monitor 1.1.1 • libVLC 3.7.7&#10;Kontrol firewall tetap khusus aplikasi PC."
+                android:text="CCTV Monitor 1.1.1 • libVLC 3.7.7"
                 android:textColor="@color/muted"
                 android:textSize="11sp" />
         </LinearLayout>
