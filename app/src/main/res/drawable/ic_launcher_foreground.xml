@@ -3,13 +3,42 @@
     android:height="108dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <group
-        android:pivotX="12"
-        android:pivotY="12"
-        android:scaleX="0.62"
-        android:scaleY="0.62">
-        <path
-            android:fillColor="@color/white"
-            android:pathData="M17,10.5V7c0,-0.55 -0.45,-1 -1,-1H4c-0.55,0 -1,0.45 -1,1v10c0,0.55 0.45,1 1,1h12c0.55,0 1,-0.45 1,-1v-3.5l4,4v-11l-4,4z" />
-    </group>
+
+    <!-- Monitor body (rounded rectangle) -->
+    <path
+        android:fillColor="#0B3B33"
+        android:pathData="M2,2 L22,2 L22,22 L2,22 Z" />
+
+    <!-- Screen area -->
+    <path
+        android:fillColor="#121922"
+        android:pathData="M4,4 L20,4 L20,20 L4,20 Z" />
+
+    <!-- Screen border -->
+    <path
+        android:fillColor="#223044"
+        android:pathData="M4.5,4 L19.5,4 L19.5,19.5 L4.5,19.5 Z" />
+
+    <!-- Grid lines (camera tiles) -->
+    <path
+        android:fillColor="#34D399"
+        android:pathData="M4.5,4 L19.5,4 M4.5,9.5 L19.5,9.5 M4.5,15 L19.5,15 M4.5,20 L19.5,20" />
+    <path
+        android:fillColor="#34D399"
+        android:pathData="M4,4.5 L4,19.5 M9.5,4.5 L9.5,19.5 M15,4.5 L15,19.5 M20,4.5 L20,19.5" />
+
+    <!-- Crosshair (monitoring indicator) -->
+    <path
+        android:fillColor="#E6EDF3"
+        android:pathData="M12,3 L12,21 M3,12 L21,12" />
+    <path
+        android:fillColor="#E6EDF3"
+        android:pathData="M6,10 L6,14 M10,6 L14,6 M18,10 L18,14 M14,6 L14,14" />
+
+    <!-- Camera lens (center) -->
+    <circle
+        android:fillColor="#34D399"
+        android:cx="12dp"
+        android:cy="12dp"
+        android:r="2dp" />
 </vector>
