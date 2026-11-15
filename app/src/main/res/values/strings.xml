@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CCTV Monitor</string>
+    <string name="settings_title">Setelan</string>
+    <string name="restore_all">Pulihkan semua</string>
+    <string name="controls">Kontrol kamera</string>
+    <string name="close">Tutup</string>
+    <string name="back">Kembali</string>
+</resources>

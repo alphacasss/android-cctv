@@ -1,0 +1,19 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+app/build/
+
+# Kredensial signing — jangan dibagikan
+keystore.properties
+keystore/
+*.jks
+*.keystore
+
+# Build outputs
+dist/
