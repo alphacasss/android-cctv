@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -20,34 +21,30 @@
         android:pathData="M4.6,4.6 L19.4,4.6 L19.4,19.4 L4.6,19.4 Z" />
 
     <!-- Grid dots (3x3 camera tiles) -->
-    <circle android:cx="6dp" android:cy="6.5dp" android:r="1dp" android:fillColor="#34D399" />
-    <circle android:cx="12dp" android:cy="6.5dp" android:r="1dp" android:fillColor="#34D399" />
-    <circle android:cx="18dp" android:cy="6.5dp" android:r="1dp" android:fillColor="#34D399" />
-    <circle android:cx="6dp" android:cy="12dp" android:r="1dp" android:fillColor="#34D399" />
-    <circle android:cx="12dp" android:cy="12dp" android:r="1dp" android:fillColor="#34D399" />
-    <circle android:cx="18dp" android:cy="12dp" android:r="1dp" android:fillColor="#34D399" />
-    <circle android:cx="6dp" android:cy="17.5dp" android:r="1dp" android:fillColor="#34D399" />
-    <circle android:cx="12dp" android:cy="17.5dp" android:r="1dp" android:fillColor="#34D399" />
-    <circle android:cx="18dp" android:cy="17.5dp" android:r="1dp" android:fillColor="#34D399" />
+    <path
+        android:fillColor="#34D399"
+        android:pathData="M5.5,5.5 L6.5,5.5 L6.5,6.5 L5.5,6.5 Z
+            M11.5,5.5 L12.5,5.5 L12.5,6.5 L11.5,6.5 Z
+            M17.5,5.5 L18.5,5.5 L18.5,6.5 L17.5,6.5 Z
+            M5.5,11.5 L6.5,11.5 L6.5,12.5 L5.5,12.5 Z
+            M11.5,11.5 L12.5,11.5 L12.5,12.5 L11.5,12.5 Z
+            M17.5,11.5 L18.5,11.5 L18.5,12.5 L17.5,12.5 Z
+            M5.5,17 L6.5,17 L6.5,18 L5.5,18 Z
+            M11.5,17 L12.5,17 L12.5,18 L11.5,18 Z
+            M17.5,17 L18.5,17 L18.5,18 L17.5,18 Z" />
 
     <!-- Central camera lens (large circular, green) -->
-    <circle
-        android:cx="12dp"
-        android:cy="12dp"
-        android:r="4dp"
-        android:fillColor="#34D399" />
+    <path
+        android:fillColor="#34D399"
+        android:pathData="M8,12 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
     <!-- Lens inner shadow (dark circle) -->
-    <circle
-        android:cx="12dp"
-        android:cy="12dp"
-        android:r="3dp"
-        android:fillColor="#0B3B33" />
+    <path
+        android:fillColor="#0B3B33"
+        android:pathData="M9,12 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
     <!-- Center pinhole -->
-    <circle
-        android:cx="12dp"
-        android:cy="12dp"
-        android:r="1.2dp"
-        android:fillColor="#E6EDF3" />
+    <path
+        android:fillColor="#E6EDF3"
+        android:pathData="M11.4,12 a0.6,0.6 0 1,0 1.2,0 a0.6,0.6 0 1,0 -1.2,0" />
 
     <!-- Camera body (small rectangle below lens) -->
     <path

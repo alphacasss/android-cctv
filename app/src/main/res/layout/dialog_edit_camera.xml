@@ -40,6 +40,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:id="@+id/tilCamIp"
             android:hint="Alamat IP / hostname">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -54,6 +55,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:id="@+id/tilCamChannel"
             android:hint="Kanal (1-16)">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -128,6 +130,14 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="Tampilkan di grid"
+            android:textColor="@color/text" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchCamForceRemote"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Paksa akses dari luar (Remote)"
             android:textColor="@color/text" />
 
         <ProgressBar

@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import id.cctv.monitor.control.ControlRepository
 import id.cctv.monitor.control.RestoreReport
 import id.cctv.monitor.data.AppPrefs
@@ -70,6 +71,18 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
 
+        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNav)
+        bottomNav.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_settings -> {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                    true
+                }
+                R.id.nav_history -> true
+                else -> false
+            }
+        }
+
         grid = findViewById(R.id.gridCameras)
         banner = findViewById(R.id.bannerRestore)
         bannerText = findViewById(R.id.tvRestoreText)
@@ -88,32 +101,30 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         }
     }
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.menu_main, menu)
-        return true
-    }
-
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.action_settings -> {
+            R.id.nav_settings -> {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true
             }
-            R.id.action_restore_exit -> {
-                confirmRestoreExit()
+            R.id.nav_history -> {
                 true
             }
-            else -> super.onOptionsItemSelected(item)
+            else -> false
         }
     }
 
     override fun onStart() {
         super.onStart()
-        applyConfigIfNeeded()
-        startAllCameras()
-        PublicIp.refreshAsync(prefs)
-        ipChangedRegistered = true
-        PublicIp.onIpChanged = { PublicIp.refreshAsync(prefs); renderCameras() }
+        try {
+            applyConfigIfNeeded()
+            startAllCameras()
+            PublicIp.refreshAsync(prefs)
+            ipChangedRegistered = true
+            PublicIp.onIpChanged = { PublicIp.refreshAsync(prefs); renderCameras() }
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "onStart error", e)
+        }
     }
 
     override fun onStop() {

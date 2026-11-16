@@ -99,20 +99,6 @@ class SettingsActivity : AppCompatActivity() {
         tvRemoteVpnInfo = findViewById(R.id.tvRemoteVpnInfo)
         tvRemoteNotice = findViewById(R.id.tvRemoteNotice)
         switchRemoteAuto = findViewById(R.id.switchRemoteAuto)
-        tvRemoteInfo = findViewById(R.id.tvRemoteInfo)
-        tvRemotePreview = findViewById(R.id.tvRemotePreview)
-        btnRefreshIp = findViewById(R.id.btnRefreshIp)
-        tilRemoteHostGlobal = findViewById(R.id.tilRemoteHostGlobal)
-        tilRemoteHttpBase = findViewById(R.id.tilRemoteHttpBase)
-        tilRemoteRtspBase = findViewById(R.id.tilRemoteRtspBase)
-
-        tvRemoteIp = findViewById(R.id.tvRemoteIp)
-        tvRemoteIpUpdated = findViewById(R.id.tvRemoteIpUpdated)
-        tvRemotePortInfo = findViewById(R.id.tvRemotePortInfo)
-        tvRemotePortTable = findViewById(R.id.tvRemotePortTable)
-        switchRemoteVpn = findViewById(R.id.switchRemoteVpn)
-        tvRemoteVpnInfo = findViewById(R.id.tvRemoteVpnInfo)
-        tvRemoteNotice = findViewById(R.id.tvRemoteNotice)
 
         findViewById<MaterialButton>(R.id.btnSaveCred).setOnClickListener { saveCredentials() }
         findViewById<MaterialButton>(R.id.btnSaveRestore).setOnClickListener { saveRestoreSettings() }
@@ -121,6 +107,7 @@ class SettingsActivity : AppCompatActivity() {
                 renderCameras()
             }
         }
+        findViewById<MaterialButton>(R.id.btnAddCamera).setOnClickListener { addCamera() }
         btnRefreshIp.setOnClickListener { refreshPublicIp(force = true) }
         btnRestoreAllNow.setOnClickListener { confirmRestoreAll() }
 
@@ -462,24 +449,32 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun editCamera(camera: Camera) {
+    private fun addCamera() {
+        val existing = prefs.cameras()
+        val nextId = (existing.maxOfOrNull { it.id } ?: 0) + 1
+        val camera = Camera(
+            id = nextId,
+            name = "CAM-%02d".format(nextId),
+            ip = "",
+            channel = 1,
+            isNvr = false,
+            enabled = true,
+            user = "",
+            pass = ""
+        )
+        editCamera(camera, isNew = true)
+    }
+
+    private fun editCamera(camera: Camera, isNew: Boolean = false) {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_edit_camera, null)
         val etName = view.findViewById<TextInputEditText>(R.id.etCamName)
         val etIp = view.findViewById<TextInputEditText>(R.id.etCamIp)
         val etChannel = view.findViewById<TextInputEditText>(R.id.etCamChannel)
         val etCamUser = view.findViewById<TextInputEditText>(R.id.etCamUser)
         val etCamPass = view.findViewById<TextInputEditText>(R.id.etCamPass)
-        val etRemoteHost = view.findViewById<TextInputEditText>(R.id.etCamRemoteHost)
-        val etRemoteHttp = view.findViewById<TextInputEditText>(R.id.etCamRemoteHttpPort)
-        val etRemoteRtsp = view.findViewById<TextInputEditText>(R.id.etCamRemoteRtspPort)
-        val tilIp = view.findViewById<TextInputLayout>(R.id.tilCamIp)
-        val tilChannel = view.findViewById<TextInputLayout>(R.id.tilCamChannel)
-        val tilRemoteHost = view.findViewById<TextInputLayout>(R.id.tilCamRemoteHost)
-        val tilRemoteHttp = view.findViewById<TextInputLayout>(R.id.tilCamRemoteHttpPort)
-        val tilRemoteRtsp = view.findViewById<TextInputLayout>(R.id.tilCamRemoteRtspPort)
+        val switchForceRemote = view.findViewById<MaterialSwitch>(R.id.switchCamForceRemote)
         val switchNvr = view.findViewById<MaterialSwitch>(R.id.switchCamNvr)
         val switchEnabled = view.findViewById<MaterialSwitch>(R.id.switchCamEnabled)
-        val switchForceRemote = view.findViewById<MaterialSwitch>(R.id.switchCamForceRemote)
         val progress = view.findViewById<ProgressBar>(R.id.progressTest)
         val tvTest = view.findViewById<TextView>(R.id.tvTestResult)
 
@@ -488,17 +483,15 @@ class SettingsActivity : AppCompatActivity() {
         etChannel.setText(camera.channel.toString())
         etCamUser.setText(camera.user)
         etCamPass.setText(camera.pass)
-        etRemoteHost.setText(camera.remoteHost)
-        etRemoteHttp.setText(if (camera.remoteHttpPort > 0) camera.remoteHttpPort.toString() else "")
-        etRemoteRtsp.setText(if (camera.remoteRtspPort > 0) camera.remoteRtspPort.toString() else "")
         switchNvr.isChecked = camera.isNvr
         switchEnabled.isChecked = camera.enabled
         switchForceRemote.isChecked = camera.forceRemote
 
+        val title = if (isNew) "Tambah kamera" else "${camera.displayName} — ubah"
         val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle("${camera.displayName} — ubah")
+            .setTitle(title)
             .setView(view)
-            .setPositiveButton("Simpan", null)
+            .setPositiveButton(if (isNew) "Tambah" else "Simpan", null)
             .setNegativeButton("Batal", null)
             .setNeutralButton("Tes ISAPI", null)
             .create()
@@ -511,49 +504,18 @@ class SettingsActivity : AppCompatActivity() {
                 val name = etName.text?.toString()?.trim().orEmpty()
                 val ip = etIp.text?.toString()?.trim().orEmpty()
                 val channel = etChannel.text?.toString()?.trim()?.toIntOrNull()
-                val remoteHost = EndpointResolver.normalizeHost(
-                    etRemoteHost.text?.toString().orEmpty()
-                )
-                val httpPort = parsePort(etRemoteHttp.text?.toString(), 0)
-                val rtspPort = parsePort(etRemoteRtsp.text?.toString(), 0)
                 val forceRemote = switchForceRemote.isChecked
-                val remoteSettings = prefs.remoteSettings()
-                tilIp.error = null
-                tilChannel.error = null
-                tilRemoteHost.error = null
-                tilRemoteHttp.error = null
-                tilRemoteRtsp.error = null
+                etIp.error = null
+                etChannel.error = null
                 if (!validIp(ip)) {
-                    if (validate) tilIp.error = "Alamat IPv4 tidak valid."
+                    if (validate) etIp.error = "Alamat IPv4 tidak valid."
                     return@read null
                 }
                 if (channel == null || channel !in 1..64) {
-                    if (validate) tilChannel.error = "Kanal 1–64."
+                    if (validate) etChannel.error = "Kanal 1–64."
                     return@read null
                 }
-                if (remoteHost.isNotEmpty() && !EndpointResolver.isValidHost(remoteHost)) {
-                    if (validate) {
-                        tilRemoteHost.error = "Nama host/DDNS tidak valid (tanpa http:// dan tanpa port)."
-                    }
-                    return@read null
-                }
-                if (forceRemote && remoteHost.isEmpty() &&
-                    !(remoteSettings.enabled || remoteSettings.hasHost)
-                ) {
-                    if (validate) {
-                        tilRemoteHost.error =
-                            "Isi alamat luar, atau aktifkan 'Akses luar jaringan otomatis' di Setelan."
-                    }
-                    return@read null
-                }
-                if (httpPort == null) {
-                    if (validate) tilRemoteHttp.error = "Kosongkan (otomatis) atau isi 1–65535."
-                    return@read null
-                }
-                if (rtspPort == null) {
-                    if (validate) tilRemoteRtsp.error = "Kosongkan (otomatis) atau isi 1–65535."
-                    return@read null
-                }
+
                 camera.copy(
                     name = name.ifBlank { "CAM-%02d".format(camera.id) },
                     ip = ip,
@@ -562,20 +524,27 @@ class SettingsActivity : AppCompatActivity() {
                     enabled = switchEnabled.isChecked,
                     user = etCamUser.text?.toString()?.trim().orEmpty(),
                     pass = etCamPass.text?.toString().orEmpty(),
-                    remoteHost = remoteHost,
-                    remoteHttpPort = httpPort,
-                    remoteRtspPort = rtspPort,
+                    remoteHost = camera.remoteHost,
+                    remoteHttpPort = camera.remoteHttpPort,
+                    remoteRtspPort = camera.remoteRtspPort,
                     forceRemote = forceRemote
                 )
             }
 
             positive.setOnClickListener {
                 val updated = readFields(true) ?: return@setOnClickListener
-                val list = prefs.cameras().map { if (it.id == camera.id) updated else it }
+                val list = prefs.cameras().toMutableList()
+                val idx = list.indexOfFirst { it.id == camera.id }
+                if (idx >= 0) list[idx] = updated else list.add(updated)
                 prefs.saveCameras(list)
                 renderCameras()
+                renderPortTable()
                 updateRestoreInfo()
-                Toast.makeText(this, "Kamera disimpan.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this,
+                    if (isNew) "Kamera ditambahkan." else "Kamera disimpan.",
+                    Toast.LENGTH_SHORT
+                ).show()
                 dialog.dismiss()
             }
 
