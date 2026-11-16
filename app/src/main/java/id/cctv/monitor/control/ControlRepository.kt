@@ -4,6 +4,7 @@ import id.cctv.monitor.data.AppPrefs
 import id.cctv.monitor.data.BackupKind
 import id.cctv.monitor.data.BackupStore
 import id.cctv.monitor.data.Camera
+import id.cctv.monitor.data.CameraFlags
 import id.cctv.monitor.net.CameraXml
 import id.cctv.monitor.net.EndpointResolver
 import id.cctv.monitor.net.IsapiClient
@@ -20,6 +21,17 @@ data class RestoreReport(val errors: List<String>) {
             "Semua kamera berhasil dipulihkan."
         } else {
             "Pemulihan selesai dengan ${errors.size} masalah:\n" + errors.joinToString("\n")
+        }
+}
+
+/** Hasil operasi bulk: matikan / nyalakan semua kamera. */
+data class BulkResult(val errors: List<String>) {
+    val ok: Boolean get() = errors.isEmpty()
+    val summary: String
+        get() = if (ok) {
+            "Semua kamera berhasil dimatikan."
+        } else {
+            "Pemutaran berhasil dihentikan, tetapi ${errors.size} kamera mengalami masalah:\n" + errors.joinToString("\n")
         }
 }
 
@@ -328,6 +340,70 @@ class ControlRepository(
             }
         }
         RestoreReport(errors)
+    }
+
+    // ---------------- kontrol bulk ----------------
+
+    /** Matikan semua kamera yang aktif sekaligus (tanpa mematikan satu-satu). */
+    suspend fun setAllCamerasOff(cameras: List<Camera>): BulkResult = withContext(Dispatchers.IO) {
+        val errors = ArrayList<String>()
+        for (cam in cameras.filter { it.enabled }) {
+            val flags = prefs.flags(cam.id)
+            if (flags.blocked) {
+                errors.add("${cam.displayName}: sudah mati (status: ${describeFlags(flags)})")
+                continue
+            }
+            if (!cam.isNvr && !flags.streamOff) {
+                try { setStream(cam, false) } catch (e: Exception) {
+                    errors.add("${cam.displayName}: stream off — ${e.message}")
+                }
+            }
+            if (!flags.rtspOff) {
+                try { setRtsp(cam, false) } catch (e: Exception) {
+                    errors.add("${cam.displayName}: RTSP off — ${e.message}")
+                }
+            }
+            if (cam.isNvr && !flags.nvrOff) {
+                try { setNvr(cam, false) } catch (e: Exception) {
+                    errors.add("${cam.displayName}: NVR off — ${e.message}")
+                }
+            }
+        }
+        BulkResult(errors)
+    }
+
+    /** Nyalakan kembali semua kamera yang aktif sekaligus. */
+    suspend fun setAllCamerasOn(cameras: List<Camera>): BulkResult = withContext(Dispatchers.IO) {
+        val errors = ArrayList<String>()
+        for (cam in cameras.filter { it.enabled }) {
+            val flags = prefs.flags(cam.id)
+            if (!flags.rtspOff) {
+                try { setRtsp(cam, true) } catch (e: Exception) {
+                    errors.add("${cam.displayName}: RTSP on — ${e.message}")
+                }
+            } else {
+                // RTSP yang sudah off akan diaktifkan oleh setRtsp di atas
+            }
+            if (!flags.streamOff && !cam.isNvr) {
+                try { setStream(cam, true) } catch (e: Exception) {
+                    errors.add("${cam.displayName}: stream on — ${e.message}")
+                }
+            }
+            if (cam.isNvr && !flags.nvrOff) {
+                try { setNvr(cam, true) } catch (e: Exception) {
+                    errors.add("${cam.displayName}: NVR on — ${e.message}")
+                }
+            }
+        }
+        BulkResult(errors)
+    }
+
+    private fun describeFlags(flags: CameraFlags): String = when {
+        flags.rtspOff -> "RTSP OFF"
+        flags.streamOff -> "STREAM OFF"
+        flags.nvrOff -> "NVR OFF"
+        flags.black -> "HITAM"
+        else -> "NORMAL"
     }
 
     // ---------------- diagnostik ----------------

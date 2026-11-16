@@ -17,6 +17,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import id.cctv.monitor.control.ControlRepository
 import id.cctv.monitor.control.RestoreReport
+import id.cctv.monitor.control.BulkResult
 import id.cctv.monitor.data.AppPrefs
 import id.cctv.monitor.data.BackupStore
 import id.cctv.monitor.data.Camera
@@ -40,6 +41,8 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
     private lateinit var bannerText: TextView
     private lateinit var bannerProgress: ProgressBar
     private lateinit var btnRestoreAll: MaterialButton
+    private lateinit var btnTurnOffAll: MaterialButton
+    private lateinit var btnTurnOnAll: MaterialButton
 
     private var playerManager: PlayerManager? = null
     private val tiles = LinkedHashMap<Int, Tile>()
@@ -89,6 +92,11 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         bannerProgress = findViewById(R.id.progressRestore)
         btnRestoreAll = findViewById(R.id.btnRestoreAll)
         btnRestoreAll.setOnClickListener { confirmRestoreAll() }
+
+        btnTurnOffAll = findViewById(R.id.btnTurnOffAll)
+        btnTurnOffAll.setOnClickListener { confirmTurnOffAll() }
+        btnTurnOnAll = findViewById(R.id.btnTurnOnAll)
+        btnTurnOnAll.setOnClickListener { confirmTurnOnAll() }
 
         supportFragmentManager.setFragmentResultListener(
             CameraControlSheet.REQUEST_KEY,
@@ -390,6 +398,124 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
                     .show()
             }
             onDone?.invoke()
+        }
+    }
+
+
+    // ---------------- aksi bulk: matikan / nyalakan semua kamera ----------------
+
+    private fun confirmTurnOffAll() {
+        val enabled = camerasById.values.count { it.enabled }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Matikan semua kamera?")
+            .setMessage(
+                "Semua $enabled kamera yang aktif akan dihentikan sekaligus. " +
+                    "Kamera yang dimatikan akan berhenti mengirim video ke grid."
+            )
+            .setPositiveButton("Matikan semua") { _, _ -> startTurnOffAll() }
+            .setNegativeButton("Batal", null)
+            .show()
+    }
+
+    private fun confirmTurnOnAll() {
+        val enabled = camerasById.values.count { it.enabled }
+        val blocked = camerasById.values.count { camera ->
+            camera.enabled && prefs.flags(camera.id).blocked
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Nyalakan kembali semua kamera?")
+            .setMessage(
+                "Semua $enabled kamera akan dimulai ulang. " +
+                    "$blocked kamera saat ini dalam status mati."
+            )
+            .setPositiveButton("Nyalakan semua") { _, _ -> startTurnOnAll() }
+            .setNegativeButton("Batal", null)
+            .show()
+    }
+
+    private fun startTurnOffAll() {
+        if (restoring) return
+        restoring = true
+        btnTurnOffAll.isEnabled = false
+        btnTurnOnAll.isEnabled = false
+        bannerProgress.visibility = View.VISIBLE
+
+        lifecycleScope.launch {
+            val report = try {
+                repository.setAllCamerasOff(camerasById.values.toList())
+            } catch (e: Exception) {
+                BulkResult(listOf(e.message ?: "Gagal mematikan."))
+            }
+            restoring = false
+            btnTurnOffAll.isEnabled = true
+            btnTurnOnAll.isEnabled = true
+            bannerProgress.visibility = View.GONE
+
+            // Perbarui status player untuk semua kamera
+            for (camera in camerasById.values) {
+                val flags = prefs.flags(camera.id)
+                if (!camera.enabled || flags.blocked) {
+                    playerStates[camera.id] = PlayerManager.State.STOPPED
+                    tiles[camera.id]?.let { tile ->
+                        tile.status.text = "MATI"
+                    }
+                }
+            }
+
+            val body = if (report.ok) {
+                report.summary
+            } else {
+                report.errors.joinToString("\n") { "• $it" }
+            }
+
+            MaterialAlertDialogBuilder(this@MainActivity)
+                .setTitle(if (report.ok) "Semua kamera dimatikan" else "Pemutaran sebagian berhasil dihentikan")
+                .setMessage(body)
+                .setPositiveButton("OK", null)
+                .show()
+        }
+    }
+
+    private fun startTurnOnAll() {
+        if (restoring) return
+        restoring = true
+        btnTurnOffAll.isEnabled = false
+        btnTurnOnAll.isEnabled = false
+        bannerProgress.visibility = View.VISIBLE
+
+        lifecycleScope.launch {
+            val report = try {
+                repository.setAllCamerasOn(camerasById.values.toList())
+            } catch (e: Exception) {
+                BulkResult(listOf(e.message ?: "Gagal menyalakan."))
+            }
+            restoring = false
+            btnTurnOffAll.isEnabled = true
+            btnTurnOnAll.isEnabled = true
+            bannerProgress.visibility = View.GONE
+
+            // Perbarui status player untuk semua kamera
+            for (camera in camerasById.values) {
+                val flags = prefs.flags(camera.id)
+                if (!camera.enabled || !flags.blocked) {
+                    playerStates[camera.id] = PlayerManager.State.STOPPED
+                    tiles[camera.id]?.let { tile ->
+                        tile.status.text = "MATI"
+                    }
+                }
+            }
+
+            val body = if (report.ok) {
+                report.summary
+            } else {
+                report.errors.joinToString("\n") { "• $it" }
+            }
+
+            MaterialAlertDialogBuilder(this@MainActivity)
+                .setTitle(if (report.ok) "Semua kamera dinyalakan" else "Pemutaran sebagian berhasil dimulai")
+                .setMessage(body)
+                .setPositiveButton("OK", null)
+                .show()
         }
     }
 
