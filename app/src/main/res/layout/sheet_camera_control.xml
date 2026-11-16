@@ -58,6 +58,35 @@
             app:strokeColor="@color/stroke" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDayNight"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/day_night"
+            android:textSize="14sp"
+            app:strokeColor="@color/stroke" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnMovement"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/movement_detect"
+            android:textSize="14sp"
+            app:strokeColor="@color/stroke" />
+
+        <TextView
+            android:id="@+id/tvMovementNote"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/movement_detect_note"
+            android:textColor="@color/muted"
+            android:textSize="12sp" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStream"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
@@ -76,6 +105,15 @@
             android:text="RTSP OFF"
             android:textColor="@color/warning"
             app:strokeColor="@color/warning" />
+
+        <TextView
+            android:id="@+id/tvDayNightNote"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/day_night_note"
+            android:textColor="@color/muted"
+            android:textSize="12sp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnNvr"

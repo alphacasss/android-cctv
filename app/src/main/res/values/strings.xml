@@ -6,4 +6,11 @@
     <string name="controls">Kontrol kamera</string>
     <string name="close">Tutup</string>
     <string name="back">Kembali</string>
+    <string name="day_night">MODE MALAM</string>
+    <string name="day_night_auto">OTOMATIS</string>
+    <string name="day_night_night">MALAM</string>
+    <string name="day_night_day">NORMAL</string>
+    <string name="day_night_note">Auto: kamera pilih sendiri. Malam: IR aktif (muncul hitam/amber). Normal: warna hari.</string>
+    <string name="movement_detect">GERAK DETECT</string>
+    <string name="movement_detect_note">Aktif: kamera aktif riwayat gerak. Nonaktif: matikan, hemat daya, tanpa pemberitahuan gerakan.</string>
 </resources>

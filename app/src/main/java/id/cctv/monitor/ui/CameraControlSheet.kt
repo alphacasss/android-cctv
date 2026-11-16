@@ -18,6 +18,7 @@ import id.cctv.monitor.control.ControlRepository
 import id.cctv.monitor.data.AppPrefs
 import id.cctv.monitor.data.Camera
 import id.cctv.monitor.data.CameraFlags
+import id.cctv.monitor.data.DayNight
 import kotlinx.coroutines.launch
 
 class CameraControlSheet : BottomSheetDialogFragment() {
@@ -50,6 +51,10 @@ class CameraControlSheet : BottomSheetDialogFragment() {
     private lateinit var btnRtsp: MaterialButton
     private lateinit var btnNvr: MaterialButton
     private lateinit var btnRefresh: MaterialButton
+    private lateinit var btnDayNight: MaterialButton
+    private lateinit var tvDayNightNote: TextView
+    private lateinit var btnMovement: MaterialButton
+    private lateinit var tvMovementNote: TextView
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -76,6 +81,50 @@ class CameraControlSheet : BottomSheetDialogFragment() {
         btnRtsp = view.findViewById(R.id.btnRtsp)
         btnNvr = view.findViewById(R.id.btnNvr)
         btnRefresh = view.findViewById(R.id.btnRefresh)
+        btnDayNight = view.findViewById(R.id.btnDayNight)
+        tvDayNightNote = view.findViewById(R.id.tvDayNightNote)
+        btnMovement = view.findViewById(R.id.btnMovement)
+        tvMovementNote = view.findViewById(R.id.tvMovementNote)
+        btnMovement.setOnClickListener {
+            val current = camera!!.movementDetect
+            val next = !current
+            val label = if (next) {
+                "Deteksi gerakan diaktifkan."
+            } else {
+                "Deteksi gerakan dimatikan."
+            }
+            val jobs = mutableListOf<suspend () -> Unit>()
+            jobs += {
+                repository.setMovementDetect(camera!!, next)
+            }
+            runAction("Mengatur deteksi gerakan…") {
+                jobs.forEach { it() }
+                label
+            }
+        }
+        btnDayNight.setOnClickListener {
+            val current = camera!!.dayNight
+            val next = when (current) {
+                DayNight.AUTO -> DayNight.NIGHT
+                DayNight.NIGHT -> DayNight.DAY
+                DayNight.DAY -> DayNight.AUTO
+            }
+            val label = when (next) {
+                DayNight.AUTO -> "Kamera dikembalikan ke mode otomatis."
+                DayNight.NIGHT -> "Kamera dimasukkan ke mode malam (IR nyala)."
+                DayNight.DAY -> "Kamera dimasukkan ke mode normal (IR mati)."
+            }
+            val jobs = mutableListOf<suspend () -> Unit>()
+            if (next != DayNight.AUTO) {
+                jobs += {
+                    repository.setDayNight(camera!!, next == DayNight.DAY)
+                }
+            }
+            runAction("Mengatur mode cahaya…") {
+                jobs.forEach { it() }
+                label
+            }
+        }
 
         camera?.let { cam ->
             tvTitle.text = "${cam.displayName} • ${cam.ip}"
@@ -114,7 +163,15 @@ class CameraControlSheet : BottomSheetDialogFragment() {
         btnStream.text = if (flags.streamOff) "AKTIFKAN STREAM" else "STOP STREAM (sub 102)"
         btnRtsp.text = if (flags.rtspOff) "RTSP ON — aktifkan layanan" else "RTSP OFF — paksa mati"
         btnNvr.text = if (flags.nvrOff) "KANAL AKTIF" else "KANAL STOP"
-        tvFlags.text = describeFlags(flags)
+        val dayNight = camera!!.dayNight
+        btnDayNight.text = when (dayNight) {
+            DayNight.AUTO -> getString(R.string.day_night_auto)
+            DayNight.NIGHT -> getString(R.string.day_night_night)
+            DayNight.DAY -> getString(R.string.day_night_day)
+        }
+        btnMovement.text = if (camera!!.movementDetect) "NONAKTIFKAN GERAK" else "AKTIFKAN GERAK"
+        tvMovementNote.visibility = View.VISIBLE
+        tvFlags.text = describeFlags(cameraId, flags)
         tvFlags.setTextColor(
             requireContext().getColor(
                 if (flags.any) R.color.warning else R.color.muted
@@ -127,13 +184,27 @@ class CameraControlSheet : BottomSheetDialogFragment() {
         }
     }
 
-    private fun describeFlags(flags: CameraFlags): String = when {
-        !flags.any -> "Status: normal"
-        flags.rtspOff -> "Status: layanan RTSP dimatikan — semua stream berhenti."
-        flags.streamOff -> "Status: sub-stream dimatikan."
-        flags.nvrOff -> "Status: kanal NVR dihentikan."
-        flags.black -> "Status: privacy mask aktif (HITAM)."
-        else -> "Status: normal"
+    private fun describeFlags(cameraId: Int, flags: CameraFlags): String {
+        val base = when {
+            !flags.any -> "Status: normal"
+            flags.rtspOff -> "Status: layanan RTSP dimatikan — semua stream berhenti."
+            flags.streamOff -> "Status: sub-stream dimatikan."
+            flags.nvrOff -> "Status: kanal NVR dihentikan."
+            flags.black -> "Status: privacy mask aktif."
+            else -> "Status: normal"
+        }
+        val dayNight = camera!!.dayNight
+        val parts = mutableListOf<String>()
+        if (camera!!.movementDetect) parts += "GERAK ACTIVE"
+        if (dayNight != DayNight.AUTO) parts += when (dayNight) {
+            DayNight.NIGHT -> "MODE MALAM"
+            DayNight.DAY -> "NORMAL"
+            else -> ""
+        }
+        return when {
+            parts.isEmpty() -> base
+            else -> "$base  |  ${parts.joinToString(" • ")}"
+        }
     }
 
     private fun toggleBlack() {
@@ -141,6 +212,14 @@ class CameraControlSheet : BottomSheetDialogFragment() {
         val enable = !prefs.flags(cameraId).black
         runAction(if (enable) "Mengaktifkan privacy mask…" else "Membuka privacy mask…") {
             repository.setBlack(cam, enable)
+            if (!enable) {
+                val all = prefs.cameras().toMutableList()
+                val idx = all.indexOfFirst { it.id == cam.id }
+                if (idx >= 0) {
+                    all[idx].dayNight = DayNight.AUTO
+                    prefs.saveCameras(all)
+                }
+            }
             if (enable) "Kamera dihitamkan (privacy mask aktif)." else "Privacy mask dibuka; kamera normal."
         }
     }

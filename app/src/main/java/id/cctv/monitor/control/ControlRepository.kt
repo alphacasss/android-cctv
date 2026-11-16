@@ -5,6 +5,8 @@ import id.cctv.monitor.data.BackupKind
 import id.cctv.monitor.data.BackupStore
 import id.cctv.monitor.data.Camera
 import id.cctv.monitor.data.CameraFlags
+import id.cctv.monitor.data.DayNight
+import id.cctv.monitor.data.toDayNight
 import id.cctv.monitor.net.CameraXml
 import id.cctv.monitor.net.EndpointResolver
 import id.cctv.monitor.net.IsapiClient
@@ -13,6 +15,7 @@ import id.cctv.monitor.net.isapiError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import android.util.Log
 
 data class RestoreReport(val errors: List<String>) {
     val ok: Boolean get() = errors.isEmpty()
@@ -311,11 +314,41 @@ class ControlRepository(
                 "Firmware NVR (${cam.ip}) tidak menyediakan tombol aktif/nonaktif kanal lewat ISAPI: " +
                     "perintah diterima tetapi status kanal tidak berubah. Hentikan rekaman kanal ini " +
                     "lewat menu NVR (Manajemen Kamera)."
-            )
+                    )
+                    }
+                    }
+
+    /** Day/night: paksa mode normal / malam / otomatis ke kamera. */
+    suspend fun setDayNight(cam: Camera, on: Boolean) {
+        withContext(Dispatchers.IO) {
+            val client = client(cam)
+            val path = dayNightPath(cam)
+            // 1 / true = day (IR nyala); 0 / false = night (IR off).
+            val bodies = if (on) listOf("<dayNight>1</dayNight>", "<dayNight>true</dayNight>")
+                         else listOf("<dayNight>0</dayNight>", "<dayNight>false</dayNight>")
+            for (body in bodies) {
+                val put = client.put(path, body)
+                if (put.code != 200) {
+                    Log.w("ControlRepository", "dayNight PUT $body → HTTP ${put.code}")
+                    continue
+                }
+                val verify = client.get(path)
+                if (verify.code != 200) {
+                    Log.w("ControlRepository", "dayNight baca balik HTTP ${verify.code}")
+                    continue
+                }
+                val state = verify.body.orEmpty().toDayNight()
+                if (state != null) {
+                    persistDayNight(cam, state)
+                    return@withContext
+                }
+                Log.w("ControlRepository", "kamera tidak mengembalikan <dayNight> pada $path")
+            }
+            persistDayNight(cam, DayNight.AUTO)
         }
     }
 
-    // ---------------- pemulihan ----------------
+                    // ---------------- pemulihan ----------------
 
     suspend fun restoreAll(cameras: List<Camera>): RestoreReport = withContext(Dispatchers.IO) {
         val errors = ArrayList<String>()
@@ -510,6 +543,58 @@ class ControlRepository(
 
     private fun nvrPath(cam: Camera) =
         "/ISAPI/ContentMgmt/InputProxy/channels/${cam.channel}"
+
+    private fun dayNightPath(cam: Camera) =
+        "/ISAPI/System/Video/inputs/channels/${cam.channel}/dayNight"
+
+    private fun movementDetectPath(cam: Camera) =
+        "/ISAPI/System/Event/notification/1/channels/${cam.channel * 100 + 1}/isMovementDetect"
+
+    /** Simpan mode malam + tulis ulang daftar kamera agar persisten. */
+    private fun persistDayNight(cam: Camera, dayNight: DayNight) {
+        val all = prefs.cameras().toMutableList()
+        val idx = all.indexOfFirst { it.id == cam.id }
+        if (idx >= 0) {
+            all[idx].dayNight = dayNight
+            prefs.saveCameras(all)
+        }
+    }
+
+    /** Gerakan: aktifkan/matikan deteksi gerakan (movement detect) di kamera. */
+    suspend fun setMovementDetect(cam: Camera, on: Boolean) {
+        withContext(Dispatchers.IO) {
+            val client = client(cam)
+            val path = movementDetectPath(cam)
+            val bodies = if (on) listOf("<isMovementDetect>true</isMovementDetect>")
+                         else listOf("<isMovementDetect>false</isMovementDetect>")
+            for (body in bodies) {
+                val put = client.put(path, body)
+                if (put.code != 200) {
+                    Log.w("ControlRepository", "movementDetect PUT $body → HTTP ${put.code}")
+                    continue
+                }
+                val verify = client.get(path)
+                if (verify.code != 200) {
+                    Log.w("ControlRepository", "movementDetect baca balik HTTP ${verify.code}")
+                    continue
+                }
+                val state = verify.body.orEmpty().contains("<isMovementDetect>true", ignoreCase = true)
+                persistMovementDetect(cam, state)
+                return@withContext
+            }
+            persistMovementDetect(cam, false)
+        }
+    }
+
+    /** Simpan mode gerakan + tulis ulang daftar kamera agar persisten. */
+    private fun persistMovementDetect(cam: Camera, enabled: Boolean) {
+        val all = prefs.cameras().toMutableList()
+        val idx = all.indexOfFirst { it.id == cam.id }
+        if (idx >= 0) {
+            all[idx].movementDetect = enabled
+            prefs.saveCameras(all)
+        }
+    }
 
     /** Aktifkan kembali entri dari backup, atau set <enabled>true</enabled> bila tanpa backup. */
     private fun restoreEnabled(

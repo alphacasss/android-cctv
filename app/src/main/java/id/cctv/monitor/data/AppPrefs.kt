@@ -174,6 +174,9 @@ class AppPrefs(context: Context) {
                     remoteHttpPort = 0
                     remoteRtspPort = 0
                 }
+                val dayNight = runCatching {
+                    DayNight.valueOf(o.optString("dayNight", DayNight.AUTO.name))
+                }.getOrDefault(DayNight.AUTO)
                 list.add(
                     Camera(
                         id = o.getInt("id"),
@@ -187,7 +190,9 @@ class AppPrefs(context: Context) {
                         remoteHost = perHost,
                         remoteHttpPort = remoteHttpPort,
                         remoteRtspPort = remoteRtspPort,
-                        forceRemote = o.optBoolean("forceRemote", false)
+                        forceRemote = o.optBoolean("forceRemote", false),
+                        dayNight = DayNight.AUTO,
+                        movementDetect = o.optBoolean("movementDetect", true)
                     )
                 )
             }
@@ -218,6 +223,8 @@ class AppPrefs(context: Context) {
                     put("remoteHttpPort", c.remoteHttpPort)
                     put("remoteRtspPort", c.remoteRtspPort)
                     put("forceRemote", c.forceRemote)
+                    put("dayNight", c.dayNight.name)
+                    put("movementDetect", c.movementDetect)
                 }
             )
         }
@@ -290,5 +297,16 @@ class AppPrefs(context: Context) {
         private const val KEY_PUBLIC_IP_AT = "public_ip_at"
         private const val KEY_PUBLIC_IP_HOME = "public_ip_home"
         private const val KEY_VPN_MODE = "vpn_mode"
+        private const val KEY_DAYNIGHT = "day_night"
     }
+
 }
+
+fun String.toDayNight(): DayNight = runCatching {
+    val v = this.trim { it <= ' ' }.lowercase()
+    when {
+        v in listOf("1", "true", "day", "daytime") -> DayNight.DAY
+        v in listOf("0", "false", "night") -> DayNight.NIGHT
+        else -> DayNight.AUTO
+    }
+}.getOrDefault(DayNight.AUTO)

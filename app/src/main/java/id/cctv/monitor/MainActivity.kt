@@ -24,6 +24,7 @@ import id.cctv.monitor.data.AppPrefs
 import id.cctv.monitor.data.BackupStore
 import id.cctv.monitor.data.Camera
 import id.cctv.monitor.data.CameraFlags
+import id.cctv.monitor.data.DayNight
 import id.cctv.monitor.data.RemoteSettings
 import id.cctv.monitor.net.EndpointResolver
 import id.cctv.monitor.net.PublicIp
@@ -376,6 +377,14 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         if (flags.rtspOff) chips.add("RTSP OFF")
         if (flags.nvrOff) chips.add("NVR OFF")
         if (!camera.enabled) chips.add("NONAKTIF")
+        val dayNight = camera.dayNight
+        if (dayNight != DayNight.AUTO) {
+            chips.add(when (dayNight) {
+                DayNight.AUTO -> "OTOMATIS"
+                DayNight.NIGHT -> "MODE MALAM"
+                DayNight.DAY -> "NORMAL"
+            })
+        }
         tile.status.text = chips.joinToString(" • ")
 
         val overlay = when {
@@ -388,6 +397,8 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
                     "Luar jaringan — aktifkan akses luar di Setelan"
                 }
             flags.streamOff || flags.rtspOff || flags.nvrOff -> "DIMATIKAN"
+            camera.dayNight == DayNight.NIGHT -> "MODE MALAM"
+            camera.dayNight == DayNight.DAY -> "NORMAL"
             flags.black -> "HITAM"
             state == PlayerManager.State.LOADING -> "Memuat…"
             state == PlayerManager.State.ERROR -> "Gagal — mencoba lagi"
@@ -401,6 +412,9 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             tile.overlay.text = overlay
             tile.overlay.visibility = View.VISIBLE
         }
+
+        val nightLayer = tile.root.findViewById<View>(R.id.nightLayer)
+        nightLayer.visibility = if (camera.dayNight == DayNight.NIGHT) View.VISIBLE else View.GONE
     }
 
     /** Render semua kamera di grid. */

@@ -6,6 +6,8 @@ import java.net.URLEncoder
  * Satu entri kamera. [user]/[pass] kosong berarti memakai kredensial default
  * dari Setelan (AppPrefs).
  */
+enum class DayNight { AUTO, NIGHT, DAY }
+
 data class Camera(
     val id: Int,
     var name: String,
@@ -25,7 +27,9 @@ data class Camera(
     var remoteHttpPort: Int = 0,
     var remoteRtspPort: Int = 0,
     /** Selalu pakai [remoteHost] walau ponsel sedang berada di LAN. */
-    var forceRemote: Boolean = false
+    var forceRemote: Boolean = false,
+    var dayNight: DayNight = DayNight.AUTO,
+    var movementDetect: Boolean = true
 ) {
     val displayName: String
         get() = if (name.isBlank()) "CAM-%02d".format(id) else name
