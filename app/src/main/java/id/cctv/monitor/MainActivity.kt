@@ -2,15 +2,17 @@ package id.cctv.monitor
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.widget.GridLayout
 import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -36,13 +38,15 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
     private lateinit var store: BackupStore
     private lateinit var repository: ControlRepository
 
-    private lateinit var grid: GridLayout
+    private lateinit var pagerCameras: ViewPager2
+    private lateinit var tvPageIndicator: TextView
     private lateinit var banner: View
     private lateinit var bannerText: TextView
     private lateinit var bannerProgress: ProgressBar
     private lateinit var btnRestoreAll: MaterialButton
     private lateinit var btnTurnOffAll: MaterialButton
     private lateinit var btnTurnOnAll: MaterialButton
+    private lateinit var btnTurnOffAllRtsp: MaterialButton
 
     private var playerManager: PlayerManager? = null
     private val tiles = LinkedHashMap<Int, Tile>()
@@ -52,6 +56,10 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
     private var restoring = false
     private var remoteSettings = RemoteSettings()
     private var ipChangedRegistered = false
+
+    private companion object {
+        const val CAMERAS_PER_PAGE = 6
+    }
 
     private data class Tile(
         val root: View,
@@ -86,7 +94,8 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             }
         }
 
-        grid = findViewById(R.id.gridCameras)
+        pagerCameras = findViewById(R.id.pagerCameras)
+        tvPageIndicator = findViewById(R.id.tvPageIndicator)
         banner = findViewById(R.id.bannerRestore)
         bannerText = findViewById(R.id.tvRestoreText)
         bannerProgress = findViewById(R.id.progressRestore)
@@ -97,6 +106,15 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         btnTurnOffAll.setOnClickListener { confirmTurnOffAll() }
         btnTurnOnAll = findViewById(R.id.btnTurnOnAll)
         btnTurnOnAll.setOnClickListener { confirmTurnOnAll() }
+        btnTurnOffAllRtsp = findViewById(R.id.btnTurnOffAllRtsp)
+        btnTurnOffAllRtsp.setOnClickListener { confirmTurnOffAllRtsp() }
+
+        pagerCameras.offscreenPageLimit = 1
+        pagerCameras.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                updatePageIndicator(position)
+            }
+        })
 
         supportFragmentManager.setFragmentResultListener(
             CameraControlSheet.REQUEST_KEY,
@@ -162,7 +180,6 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         playerManager?.release()
         tiles.clear()
         playerStates.clear()
-        grid.removeAllViews()
 
         val manager = PlayerManager(this, prefs)
         manager.listener = this
@@ -171,15 +188,55 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         val cameras = prefs.cameras().sortedBy { it.id }
         camerasById = cameras.associateBy { it.id }
 
-        for (camera in cameras) {
-            val tileView = layoutInflater.inflate(R.layout.item_camera, grid, false)
+        buildCameraPages(cameras, manager)
+        updateBanner()
+    }
+
+    private fun buildCameraPages(cameras: List<Camera>, manager: PlayerManager) {
+        val pages = if (cameras.isEmpty()) listOf(emptyList()) else cameras.chunked(CAMERAS_PER_PAGE)
+        val pageViews = pages.map { pageCams -> createPageView(pageCams, manager) }
+
+        pagerCameras.adapter = object : RecyclerView.Adapter<PageHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageHolder {
+                // Not used; pages are pre-created to keep VLC surfaces attached.
+                val view = layoutInflater.inflate(R.layout.page_camera_grid, parent, false)
+                return PageHolder(view)
+            }
+
+            override fun getItemCount(): Int = pageViews.size
+
+            override fun onBindViewHolder(holder: PageHolder, position: Int) {
+                val page = pageViews[position]
+                val container = holder.itemView as? ViewGroup ?: return
+                if (page.parent !== container) {
+                    (page.parent as? ViewGroup)?.removeView(page)
+                    container.removeAllViews()
+                    container.addView(page)
+                }
+            }
+        }
+        pagerCameras.setCurrentItem(0, false)
+        updatePageIndicator(0)
+        pagerCameras.post { adjustPagerHeightToFit() }
+    }
+
+    private fun createPageView(pageCameras: List<Camera>, manager: PlayerManager): View {
+        val page = layoutInflater.inflate(R.layout.page_camera_grid, pagerCameras, false) as GridLayout
+        val rows = if (pageCameras.isEmpty()) 1 else kotlin.math.ceil(pageCameras.size / 3.0).toInt().coerceAtLeast(1)
+        page.columnCount = 3
+        page.rowCount = rows
+        pageCameras.forEachIndexed { index, camera ->
+            val tileView = layoutInflater.inflate(R.layout.item_camera, page, false)
+            val row = index / 3
+            val col = index % 3
             val params = GridLayout.LayoutParams().apply {
                 width = 0
                 height = GridLayout.LayoutParams.WRAP_CONTENT
-                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1, 1f)
+                columnSpec = GridLayout.spec(col, 1, 1f)
+                rowSpec = GridLayout.spec(row, 1, 1f)
                 setMargins(dp(4), dp(4), dp(4), dp(4))
             }
-            grid.addView(tileView, params)
+            page.addView(tileView, params)
 
             val tile = Tile(
                 root = tileView,
@@ -198,8 +255,40 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
 
             manager.attach(camera, tile.video)
         }
-        updateBanner()
+        return page
     }
+
+    private fun updatePageIndicator(position: Int) {
+        val count = pagerCameras.adapter?.itemCount ?: 0
+        if (count <= 1) {
+            tvPageIndicator.visibility = View.GONE
+        } else {
+            tvPageIndicator.visibility = View.VISIBLE
+            tvPageIndicator.text = "Halaman ${position + 1} / $count  •  Geser untuk kamera lain"
+        }
+    }
+
+    private fun adjustPagerHeightToFit() {
+        val w = pagerCameras.width
+        if (w <= 0) return
+        val total = camerasById.size
+        val rows = if (total <= 0) 1 else kotlin.math.min(2, kotlin.math.ceil(total.coerceAtMost(CAMERAS_PER_PAGE) / 3.0).toInt()).coerceAtLeast(1)
+        // For mixed pages (e.g. 6 + 3 cameras), keep height for up to 2 rows so page 1 fits;
+        // page 2 will have fewer rows aligned at top with consistent pager height.
+        val maxRows = if (total > CAMERAS_PER_PAGE) 2 else rows
+        val hPad = pagerCameras.paddingLeft + pagerCameras.paddingRight
+        val colWidth = ((w - hPad) / 3f)
+        val tileWidth = (colWidth - dp(8)).coerceAtLeast(dp(60).toFloat())
+        val tileHeight = tileWidth * 9f / 16f
+        val desired = (tileHeight * maxRows + dp(8) * maxRows + dp(2)).toInt().coerceAtLeast(dp(100))
+        val lp = pagerCameras.layoutParams
+        if (lp.height != desired) {
+            lp.height = desired
+            pagerCameras.layoutParams = lp
+        }
+    }
+
+    private class PageHolder(itemView: View) : RecyclerView.ViewHolder(itemView)
 
     private fun startAllCameras() {
         val manager = playerManager ?: return
@@ -438,6 +527,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         restoring = true
         btnTurnOffAll.isEnabled = false
         btnTurnOnAll.isEnabled = false
+        btnTurnOffAllRtsp.isEnabled = false
         bannerProgress.visibility = View.VISIBLE
 
         lifecycleScope.launch {
@@ -449,25 +539,20 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             restoring = false
             btnTurnOffAll.isEnabled = true
             btnTurnOnAll.isEnabled = true
+            btnTurnOffAllRtsp.isEnabled = true
             bannerProgress.visibility = View.GONE
 
-            // Perbarui status player untuk semua kamera
             for (camera in camerasById.values) {
                 val flags = prefs.flags(camera.id)
                 if (!camera.enabled || flags.blocked) {
+                    playerManager?.stop(camera.id)
                     playerStates[camera.id] = PlayerManager.State.STOPPED
-                    tiles[camera.id]?.let { tile ->
-                        tile.status.text = "MATI"
-                    }
                 }
+                render(camera, flags)
             }
+            updateBanner()
 
-            val body = if (report.ok) {
-                report.summary
-            } else {
-                report.errors.joinToString("\n") { "• $it" }
-            }
-
+            val body = if (report.ok) report.summary else report.errors.joinToString("\n") { "• $it" }
             MaterialAlertDialogBuilder(this@MainActivity)
                 .setTitle(if (report.ok) "Semua kamera dimatikan" else "Pemutaran sebagian berhasil dihentikan")
                 .setMessage(body)
@@ -481,6 +566,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         restoring = true
         btnTurnOffAll.isEnabled = false
         btnTurnOnAll.isEnabled = false
+        btnTurnOffAllRtsp.isEnabled = false
         bannerProgress.visibility = View.VISIBLE
 
         lifecycleScope.launch {
@@ -492,27 +578,75 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             restoring = false
             btnTurnOffAll.isEnabled = true
             btnTurnOnAll.isEnabled = true
+            btnTurnOffAllRtsp.isEnabled = true
             bannerProgress.visibility = View.GONE
 
-            // Perbarui status player untuk semua kamera
             for (camera in camerasById.values) {
                 val flags = prefs.flags(camera.id)
-                if (!camera.enabled || !flags.blocked) {
+                render(camera, flags)
+                onCameraChanged(camera.id, false)
+            }
+            updateBanner()
+
+            val body = if (report.ok) report.summary else report.errors.joinToString("\n") { "• $it" }
+            MaterialAlertDialogBuilder(this@MainActivity)
+                .setTitle(if (report.ok) "Semua kamera dinyalakan" else "Pemutaran sebagian berhasil dimulai")
+                .setMessage(body)
+                .setPositiveButton("OK", null)
+                .show()
+        }
+    }
+
+    private fun confirmTurnOffAllRtsp() {
+        val targets = camerasById.values.count { it.enabled && !it.isNvr }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Matikan semua RTSP?")
+            .setMessage(
+                "Layanan RTSP akan dimatikan pada $targets kamera aktif (non-NVR). " +
+                    "Kamera NVR tidak diubah untuk menghindari gangguan pada semua kanal."
+            )
+            .setPositiveButton("Matikan RTSP") { _, _ -> startTurnOffAllRtsp() }
+            .setNegativeButton("Batal", null)
+            .show()
+    }
+
+    private fun startTurnOffAllRtsp() {
+        if (restoring) return
+        restoring = true
+        btnTurnOffAll.isEnabled = false
+        btnTurnOnAll.isEnabled = false
+        btnTurnOffAllRtsp.isEnabled = false
+        bannerProgress.visibility = View.VISIBLE
+
+        lifecycleScope.launch {
+            val report = try {
+                repository.setAllRtspOff(camerasById.values.toList())
+            } catch (e: Exception) {
+                BulkResult(listOf(e.message ?: "Gagal mematikan RTSP."))
+            }
+            restoring = false
+            btnTurnOffAll.isEnabled = true
+            btnTurnOnAll.isEnabled = true
+            btnTurnOffAllRtsp.isEnabled = true
+            bannerProgress.visibility = View.GONE
+
+            for (camera in camerasById.values) {
+                val flags = prefs.flags(camera.id)
+                render(camera, flags)
+                if (flags.blocked) {
+                    playerManager?.stop(camera.id)
                     playerStates[camera.id] = PlayerManager.State.STOPPED
-                    tiles[camera.id]?.let { tile ->
-                        tile.status.text = "MATI"
-                    }
                 }
             }
+            updateBanner()
 
             val body = if (report.ok) {
-                report.summary
+                "RTSP semua kamera (non-NVR) berhasil dimatikan."
             } else {
                 report.errors.joinToString("\n") { "• $it" }
             }
-
             MaterialAlertDialogBuilder(this@MainActivity)
-                .setTitle(if (report.ok) "Semua kamera dinyalakan" else "Pemutaran sebagian berhasil dimulai")
+                .setTitle(if (report.ok) "RTSP dimatikan" else "Sebagian RTSP gagal dimatikan")
                 .setMessage(body)
                 .setPositiveButton("OK", null)
                 .show()

@@ -122,7 +122,9 @@
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:clipToPadding="false"
         android:fillViewport="true"
+        android:paddingBottom="88dp"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <LinearLayout
@@ -166,27 +168,34 @@
                         android:textColor="@color/accent"
                         android:visibility="gone" />
 
-                    <GridLayout
-                        android:id="@+id/gridCameras"
+                    <androidx.viewpager2.widget.ViewPager2
+                        android:id="@+id/pagerCameras"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:columnCount="3"
-                        android:rowCount="3"
-                        android:useDefaultMargins="false"
-                        android:alignmentMode="alignMargins" />
+                        android:layout_marginTop="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvPageIndicator"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:gravity="center"
+                        android:textColor="@color/muted"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
+                        android:layout_marginTop="8dp"
                         android:gravity="center"
                         android:lineSpacingExtra="3dp"
-                        android:text="Ketuk kamera untuk layar penuh.
-Tombol &#8964; membuka kontrol HITAM, STREAM, RTSP, dan kanal NVR."
+                        android:text="Geser untuk melihat kamera lain. Ketuk kamera untuk layar penuh.\nTombol &#8964; membuka kontrol HITAM, STREAM, RTSP, dan kanal NVR."
                         android:textColor="@color/muted"
                         android:textSize="12sp" />
                 </LinearLayout>
-            
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Aksi bulk: matikan / nyalakan semua kamera sekaligus -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
@@ -215,32 +224,43 @@ Tombol &#8964; membuka kontrol HITAM, STREAM, RTSP, dan kanal NVR."
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:layout_marginTop="8dp">
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnTurnOffAll"
                             style="@style/Widget.Material3.Button"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
                             android:layout_marginEnd="4dp"
+                            android:layout_weight="1"
                             android:text="MATIKAN SEMUA"
-                            android:textColor="@color/black" />
+                            android:textColor="@color/black"
+                            app:backgroundTint="@color/danger" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnTurnOnAll"
                             style="@style/Widget.Material3.Button"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
                             android:layout_marginStart="4dp"
+                            android:layout_weight="1"
                             android:text="NYALAKAN SEMUA"
-                            android:textColor="@color/black" />
+                            android:textColor="@color/black"
+                            app:backgroundTint="@color/status_ok" />
                     </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnTurnOffAllRtsp"
+                        style="@style/Widget.Material3.Button"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="MATIKAN SEMUA RTSP"
+                        android:textColor="@color/black"
+                        app:backgroundTint="@color/warning" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-</com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"

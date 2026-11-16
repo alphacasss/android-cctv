@@ -372,6 +372,27 @@ class ControlRepository(
         BulkResult(errors)
     }
 
+    /** Matikan layanan RTSP pada semua kamera aktif yang mendukung (non-NVR). */
+    suspend fun setAllRtspOff(cameras: List<Camera>): BulkResult = withContext(Dispatchers.IO) {
+        val errors = ArrayList<String>()
+        for (cam in cameras.filter { it.enabled }) {
+            val flags = prefs.flags(cam.id)
+            if (cam.isNvr) {
+                errors.add("${cam.displayName}: NVR — RTSP tidak dimatikan per kanal")
+                continue
+            }
+            if (flags.rtspOff) {
+                continue
+            }
+            try {
+                setRtsp(cam, false)
+            } catch (e: Exception) {
+                errors.add("${cam.displayName}: RTSP off — ${e.message}")
+            }
+        }
+        BulkResult(errors)
+    }
+
     /** Nyalakan kembali semua kamera yang aktif sekaligus. */
     suspend fun setAllCamerasOn(cameras: List<Camera>): BulkResult = withContext(Dispatchers.IO) {
         val errors = ArrayList<String>()
