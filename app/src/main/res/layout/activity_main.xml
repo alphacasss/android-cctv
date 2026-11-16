@@ -191,10 +191,10 @@ Tombol &#8964; membuka kontrol HITAM, STREAM, RTSP, dan kanal NVR."
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
+                android:layout_marginBottom="16dp"
                 app:cardBackgroundColor="@color/surface"
                 app:cardCornerRadius="16dp"
-                app:cardElevation="8dp"
+                app:cardElevation="0dp"
                 app:strokeColor="@color/stroke"
                 app:strokeWidth="1dp">
 
