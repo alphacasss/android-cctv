@@ -30,6 +30,13 @@ data class RestoreReport(val errors: List<String>) {
         }
 }
 
+/** Hasil satu kamera dalam operasi bulk. */
+data class BulkOutcome(
+    val label: String,
+    val applied: Boolean = true,
+    val error: String? = null
+)
+
 /** Hasil operasi bulk: matikan / nyalakan semua kamera. */
 data class BulkResult(val errors: List<String>) {
     val ok: Boolean get() = errors.isEmpty()
@@ -39,6 +46,19 @@ data class BulkResult(val errors: List<String>) {
         } else {
             "Aksi massal selesai dengan ${errors.size} masalah:\n" + errors.joinToString("\n")
         }
+
+    companion object {
+        fun from(outcomes: List<BulkOutcome>): BulkResult = BulkResult(
+            outcomes.mapNotNull { outcome ->
+                when {
+                    outcome.error != null -> "${outcome.label}: ${outcome.error}"
+                    !outcome.applied ->
+                        "${outcome.label}: perangkat tidak mengonfirmasi perubahan"
+                    else -> null
+                }
+            }
+        )
+    }
 }
 
 /** Satu baris hasil pemeriksaan kemampuan kamera. */
@@ -602,17 +622,21 @@ class ControlRepository(
      * mati bila sebagian rute gagal, supaya pemutaran di ponsel ini berhenti.
      */
     suspend fun setAllRtspOff(cameras: List<Camera>): BulkResult = withContext(Dispatchers.IO) {
-        val errors = mutableListOf<String>()
+        val outcomes = mutableListOf<BulkOutcome>()
         for (cam in cameras.filter { it.enabled }) {
-            try {
-                setRtsp(cam, false)
+            val outcome = try {
+                BulkOutcome(cam.displayName, applied = setRtsp(cam, false))
             } catch (e: Exception) {
-                errors += "${cam.displayName}: ${e.message ?: "Gagal mematikan RTSP perangkat."} " +
-                    "(pemutaran di aplikasi tetap dihentikan)"
+                BulkOutcome(
+                    cam.displayName,
+                    error = (e.message ?: "Gagal mematikan RTSP perangkat.") +
+                        " (pemutaran di aplikasi tetap dihentikan)"
+                )
             }
+            outcomes += outcome
             prefs.setFlags(cam.id, prefs.flags(cam.id).copy(rtspOff = true))
         }
-        BulkResult(errors)
+        BulkResult.from(outcomes)
     }
 
     /**
@@ -941,7 +965,7 @@ class ControlRepository(
         if (on) {
             val backup = store.read(cam.id, BackupKind.INPUT_PROXY)
             if (backup == null) {
-                val ok = currentIp != null && currentIp != DUMMY_SOURCE_IP
+                val ok = !InputProxyAddress.isDummy(currentIp)
                 Log.d(TAG, "inputProxy restore cam=${cam.id} tanpa backup ok=$ok ip=$currentIp")
                 return ok
             }
@@ -954,7 +978,7 @@ class ControlRepository(
             delay(400)
             val verify = client.get(path)
             val restoredIp = if (verify.code == 200) inputProxyIp(verify.body.orEmpty()) else null
-            if (restoredIp == null || restoredIp == DUMMY_SOURCE_IP) {
+            if (InputProxyAddress.isDummy(restoredIp)) {
                 Log.w(TAG, "inputProxy restore cam=${cam.id}: alamat belum pulih ($restoredIp)")
                 return false
             }
@@ -963,8 +987,9 @@ class ControlRepository(
             return true
         }
 
-        if (currentIp == DUMMY_SOURCE_IP) {
-            Log.d(TAG, "inputProxy cam=${cam.id} sudah terputus")
+        val dummyIp = InputProxyAddress.dummyIp(cam.channel)
+        if (InputProxyAddress.isDummy(currentIp)) {
+            Log.d(TAG, "inputProxy cam=${cam.id} sudah terputus ip=$currentIp")
             return true
         }
         if (currentIp == null) {
@@ -974,7 +999,7 @@ class ControlRepository(
         val backup = store.read(cam.id, BackupKind.INPUT_PROXY) ?: body.also {
             store.write(cam.id, BackupKind.INPUT_PROXY, it)
         }
-        val offlineBody = replaceInputProxyIp(body, DUMMY_SOURCE_IP) ?: return false
+        val offlineBody = replaceInputProxyIp(body, dummyIp) ?: return false
         val put = client.put(path, offlineBody)
         if (put.code != 200) {
             Log.w(TAG, "inputProxy off cam=${cam.id} via ${client.label}: PUT ${put.code}")
@@ -982,12 +1007,12 @@ class ControlRepository(
         delay(400)
         val verify = client.get(path)
         val applied = verify.code == 200 &&
-            inputProxyIp(verify.body.orEmpty()) == DUMMY_SOURCE_IP
+            inputProxyIp(verify.body.orEmpty()) == dummyIp
         if (!applied) {
             runCatching { client.put(path, backup) }
             Log.w(TAG, "inputProxy off cam=${cam.id}: perangkat tidak mengonfirmasi IP dummy")
         } else {
-            Log.d(TAG, "inputProxy off cam=${cam.id} route=${client.label} ip=$DUMMY_SOURCE_IP")
+            Log.d(TAG, "inputProxy off cam=${cam.id} route=${client.label} ip=$dummyIp")
         }
         return applied
     }
@@ -1147,8 +1172,6 @@ class ControlRepository(
     companion object {
         private const val TAG = "ControlRepository"
         private const val RTSP_PATH = "/ISAPI/Security/adminAccesses"
-        /** TEST-NET-1: tidak bisa dijangkau NVR, aman dipakai sebagai IP dummy. */
-        private const val DUMMY_SOURCE_IP = "192.0.2.1"
         private const val DEFAULT_WIDTH = 1920
         private const val DEFAULT_HEIGHT = 1080
     }
