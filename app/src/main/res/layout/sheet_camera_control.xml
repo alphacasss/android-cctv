@@ -47,14 +47,25 @@
             android:indeterminateTint="@color/accent"
             android:visibility="gone" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_16"
+            android:text="TAMPILAN &amp; SENSOR"
+            android:textColor="@color/muted_dim"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnBlack"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="@dimen/spacing_8"
             android:text="HITAM — privacy mask"
             android:textColor="@color/text"
+            app:icon="@drawable/ic_eye"
+            app:iconTint="@color/text"
             app:strokeColor="@color/stroke" />
 
         <com.google.android.material.button.MaterialButton
@@ -106,14 +117,25 @@
             android:textSize="12sp"
             android:visibility="gone" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_16"
+            android:text="STREAM &amp; REKAM"
+            android:textColor="@color/muted_dim"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStream"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="@dimen/spacing_8"
             android:text="STOP STREAM"
             android:textColor="@color/text"
+            app:icon="@drawable/ic_video"
+            app:iconTint="@color/text"
             app:strokeColor="@color/stroke" />
 
         <com.google.android.material.button.MaterialButton
@@ -121,9 +143,11 @@
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="@dimen/spacing_8"
             android:text="RTSP OFF"
             android:textColor="@color/warning"
+            app:icon="@drawable/ic_power"
+            app:iconTint="@color/warning"
             app:strokeColor="@color/warning" />
 
         <TextView
@@ -157,22 +181,26 @@
                 style="@style/Widget.Material3.Button"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="4dp"
+                android:layout_marginEnd="@dimen/spacing_4"
                 android:layout_weight="1"
                 android:text="FOTO"
                 android:textColor="@color/black"
-                app:backgroundTint="@color/accent" />
+                app:backgroundTint="@color/accent"
+                app:icon="@drawable/ic_camera"
+                app:iconTint="@color/black" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnRecord"
                 style="@style/Widget.Material3.Button"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
+                android:layout_marginStart="@dimen/spacing_4"
                 android:layout_weight="1"
                 android:text="REKAM"
                 android:textColor="@color/black"
-                app:backgroundTint="@color/status_info" />
+                app:backgroundTint="@color/status_info"
+                app:icon="@drawable/ic_play"
+                app:iconTint="@color/black" />
         </LinearLayout>
 
         <TextView
@@ -183,6 +211,15 @@
             android:text="Kamera tanpa IR: NIGHT BOOST mencerahkan gambar dari aplikasi. FOTO menyimpan snapshot ke galeri; REKAM menyimpan klip .ts (putar dengan VLC)."
             android:textColor="@color/muted"
             android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_16"
+            android:text="SISTEM"
+            android:textColor="@color/muted_dim"
+            android:textSize="11sp"
+            android:textStyle="bold" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnLed"
@@ -199,9 +236,11 @@
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="@dimen/spacing_4"
             android:text="CEK KEMAMPUAN KAMERA (ISAPI)"
-            android:textColor="@color/accent" />
+            android:textColor="@color/accent"
+            app:icon="@drawable/ic_settings"
+            app:iconTint="@color/accent" />
 
         <TextView
             android:id="@+id/tvProbeResult"
@@ -219,9 +258,11 @@
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="@dimen/spacing_8"
             android:text="KANAL STOP"
             android:textColor="@color/warning"
+            app:icon="@drawable/ic_power"
+            app:iconTint="@color/warning"
             app:strokeColor="@color/warning"
             android:visibility="gone" />
 
@@ -230,9 +271,11 @@
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="@dimen/spacing_4"
             android:text="Muat ulang tampilan"
-            android:textColor="@color/accent" />
+            android:textColor="@color/accent"
+            app:icon="@drawable/ic_refresh"
+            app:iconTint="@color/accent" />
 
         <TextView
             android:id="@+id/tvRtspNote"
@@ -256,14 +299,26 @@
             android:textColor="@color/accent"
             android:textSize="12sp" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_16"
+            android:text="CLOUD"
+            android:textColor="@color/muted_dim"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <!-- Teks harus hitam di atas background accent; sebelumnya sama-sama @color/accent sehingga tak terbaca. -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnBindCloud"
             style="@style/Widget.Material3.Button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="@dimen/spacing_8"
             android:text="BIND KE CLOUD (Hik-Connect)"
-            android:textColor="@color/accent"
-            app:backgroundTint="@color/accent" />
+            android:textColor="@color/black"
+            app:backgroundTint="@color/accent"
+            app:icon="@drawable/ic_wifi"
+            app:iconTint="@color/black" />
     </LinearLayout>
 </ScrollView>

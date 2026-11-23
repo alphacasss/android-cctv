@@ -43,44 +43,64 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
-                    <TextView
-                        android:id="@+id/tvStatusTitle"
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="@drawable/bg_chip"
+                        android:contentDescription="@string/controls"
+                        android:padding="9dp"
+                        android:src="@drawable/ic_camera"
+                        android:tint="@color/accent" />
+
+                    <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/spacing_12"
                         android:layout_weight="1"
-                        android:text="Kamera Aktif"
-                        android:textColor="@color/text"
-                        android:textSize="20sp"
-                        android:textStyle="bold" />
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tvStatusTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Kamera Aktif"
+                            android:textColor="@color/text"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvStatusSubtitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="@dimen/spacing_4"
+                            android:text="8 kamera Hikvision di jaringan rumah"
+                            android:textColor="@color/muted"
+                            android:textSize="12sp" />
+                    </LinearLayout>
 
                     <ImageView
                         android:id="@+id/ivStatusDot"
                         android:layout_width="12dp"
                         android:layout_height="12dp"
-                        android:background="@drawable/bg_status_online"
-                        android:layout_marginStart="8dp" />
+                        android:layout_marginStart="@dimen/spacing_8"
+                        android:background="@drawable/bg_status_online" />
                 </LinearLayout>
 
                 <TextView
-                    android:id="@+id/tvStatusSubtitle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="9 kamera Hikvision di jaringan rumah"
-                    android:textColor="@color/muted"
-                    android:textSize="13sp" />
-
-                <TextView
                     android:id="@+id/tvTotalCameras"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="9 kamera terhubung"
-                    android:textColor="@color/muted"
-                    android:textSize="12sp" />
+                    android:layout_marginTop="@dimen/spacing_12"
+                    android:background="@drawable/bg_chip"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="@dimen/spacing_4"
+                    android:text="8 kamera terhubung"
+                    android:textColor="@color/accent"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -110,13 +130,16 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnRestoreAll"
+            style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:layout_marginTop="8dp"
+            android:layout_marginStart="@dimen/spacing_8"
+            android:layout_marginTop="@dimen/spacing_8"
             android:text="Pulihkan semua"
-            android:textColor="@color/black"
-            app:backgroundTint="@color/warning" />
+            android:textColor="@color/warning"
+            app:icon="@drawable/ic_refresh"
+            app:iconTint="@color/warning"
+            app:strokeColor="@color/warning" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
@@ -150,23 +173,30 @@
                     android:orientation="vertical"
                     android:padding="12dp">
 
-                    <TextView
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Grid Kamera"
-                        android:textColor="@color/text"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnRefreshCameras"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:text="Muat ulang"
-                        android:textColor="@color/accent"
-                        android:visibility="gone" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Grid Kamera"
+                            android:textColor="@color/text"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnRefreshCameras"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Muat ulang"
+                            android:textColor="@color/accent"
+                            android:visibility="gone" />
+                    </LinearLayout>
 
                     <androidx.viewpager2.widget.ViewPager2
                         android:id="@+id/pagerCameras"
@@ -187,12 +217,11 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="@dimen/spacing_8"
                         android:gravity="center"
-                        android:lineSpacingExtra="3dp"
-                        android:text="Geser untuk melihat kamera lain. Ketuk kamera untuk layar penuh.\nTombol &#8964; membuka kontrol HITAM, STREAM, RTSP, dan kanal NVR."
+                        android:text="Geser untuk kamera lain • ketuk untuk layar penuh • &#8942; untuk kontrol"
                         android:textColor="@color/muted"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -236,10 +265,12 @@
                         style="@style/Widget.Material3.Button"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="@dimen/spacing_8"
                         android:text="AKTIFKAN MODE AWAY"
                         android:textColor="@color/black"
-                        app:backgroundTint="@color/accent" />
+                        app:backgroundTint="@color/accent"
+                        app:icon="@drawable/ic_power"
+                        app:iconTint="@color/black" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -279,22 +310,26 @@
                             style="@style/Widget.Material3.Button"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_marginEnd="4dp"
+                            android:layout_marginEnd="@dimen/spacing_4"
                             android:layout_weight="1"
                             android:text="MATIKAN SEMUA"
                             android:textColor="@color/black"
-                            app:backgroundTint="@color/danger" />
+                            app:backgroundTint="@color/danger"
+                            app:icon="@drawable/ic_close"
+                            app:iconTint="@color/black" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnTurnOnAll"
                             style="@style/Widget.Material3.Button"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="4dp"
+                            android:layout_marginStart="@dimen/spacing_4"
                             android:layout_weight="1"
                             android:text="NYALAKAN SEMUA"
                             android:textColor="@color/black"
-                            app:backgroundTint="@color/status_ok" />
+                            app:backgroundTint="@color/status_ok"
+                            app:icon="@drawable/ic_check"
+                            app:iconTint="@color/black" />
                     </LinearLayout>
 
                     <com.google.android.material.button.MaterialButton
@@ -302,10 +337,12 @@
                         style="@style/Widget.Material3.Button"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="@dimen/spacing_8"
                         android:text="MATIKAN SEMUA RTSP"
                         android:textColor="@color/black"
-                        app:backgroundTint="@color/warning" />
+                        app:backgroundTint="@color/warning"
+                        app:icon="@drawable/ic_video"
+                        app:iconTint="@color/black" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
