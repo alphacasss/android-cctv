@@ -34,6 +34,7 @@ import id.cctv.monitor.cloud.StreamEncryptionManager
 import id.cctv.monitor.control.ControlRepository
 import id.cctv.monitor.control.RestoreReport
 import id.cctv.monitor.control.BulkResult
+import id.cctv.monitor.data.ActivitySummary
 import id.cctv.monitor.data.AppPrefs
 import id.cctv.monitor.data.BackupStore
 import id.cctv.monitor.data.Camera
@@ -50,6 +51,9 @@ import id.cctv.monitor.ui.CameraControlSheet
 import id.cctv.monitor.ui.CloudBindingSheet
 import kotlinx.coroutines.launch
 import org.videolan.libvlc.util.VLCVideoLayout
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity(), PlayerManager.Listener {
 
@@ -61,6 +65,8 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
     private lateinit var tvPageIndicator: TextView
     private lateinit var tvStatusSubtitle: TextView
     private lateinit var tvTotalCameras: TextView
+    private lateinit var tvActivityInfo: TextView
+    private lateinit var tvActivityLog: TextView
     private lateinit var banner: View
     private lateinit var bannerText: TextView
     private lateinit var bannerProgress: ProgressBar
@@ -172,6 +178,8 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         tvPageIndicator = findViewById(R.id.tvPageIndicator)
         tvStatusSubtitle = findViewById(R.id.tvStatusSubtitle)
         tvTotalCameras = findViewById(R.id.tvTotalCameras)
+        tvActivityInfo = findViewById(R.id.tvActivityInfo)
+        tvActivityLog = findViewById(R.id.tvActivityLog)
         banner = findViewById(R.id.bannerRestore)
         bannerText = findViewById(R.id.tvRestoreText)
         bannerProgress = findViewById(R.id.progressRestore)
@@ -208,6 +216,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             val refresh = bundle.getBoolean(CameraControlSheet.KEY_REFRESH, false)
             if (id > 0) onCameraChanged(id, refresh)
             updateBanner()
+            renderActivityLog()
         }
 
         // Hasil impor otomatis kanal cloud: muat ulang grid tanpa menunggu
@@ -220,6 +229,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             applyConfigIfNeeded()
             startAllCameras()
         }
+        renderActivityLog()
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -268,6 +278,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         super.onResume()
         findViewById<BottomNavigationView>(R.id.bottomNav)?.selectedItemId = R.id.nav_monitor
         updateBanner()
+        renderActivityLog()
     }
 
     override fun onDestroy() {
@@ -298,6 +309,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         tvStatusSubtitle.text = "${cameras.size} kamera Hikvision di jaringan rumah"
         tvTotalCameras.text = "${cameras.size} kamera terhubung"
         updateBanner()
+        renderActivityLog()
     }
 
     /**
@@ -604,6 +616,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             !manager.isActive(cameraId) -> manager.play(camera, false)
             else -> render(camera, flags)
         }
+        renderActivityLog()
     }
 
     private fun hasCredentials(camera: Camera): Boolean =
@@ -829,6 +842,29 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
 
     // ---------------- banner & pemulihan ----------------
 
+    /** Ringkasan status lokal dan empat aksi terbaru pada card "Aktifitas & Status". */
+    private fun renderActivityLog() {
+        if (!::tvActivityInfo.isInitialized || !::tvActivityLog.isInitialized) return
+        val cameras = camerasById.values.toList()
+        val total = cameras.count { it.enabled }
+        val off = cameras.count { camera ->
+            camera.enabled && prefs.flags(camera.id).let { flags ->
+                flags.blocked || flags.rtspOff || flags.nvrOff || flags.streamOff
+            }
+        }
+        tvActivityInfo.text = ActivitySummary.format(total, off, store.count())
+
+        val entries = prefs.activityLog().take(4)
+        tvActivityLog.text = if (entries.isEmpty()) {
+            "Belum ada aktivitas tercatat."
+        } else {
+            val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+            entries.joinToString("\n") { entry ->
+                "${timeFormat.format(Date(entry.at))}  ${entry.title} — ${entry.detail}"
+            }
+        }
+    }
+
     private fun updateBanner() {
         val backups = store.count()
         val dirty = prefs.anyFlagSet() || backups > 0
@@ -889,6 +925,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             btnRestoreAll.isEnabled = true
             bannerProgress.visibility = View.GONE
             updateBanner()
+            renderActivityLog()
             startAllCameras()
 
             if (showDialog) {
@@ -976,6 +1013,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
                 render(camera, flags)
             }
             updateBanner()
+            renderActivityLog()
 
             val body = if (report.ok) report.summary else report.errors.joinToString("\n") { "• $it" }
             MaterialAlertDialogBuilder(this@MainActivity)
@@ -1019,6 +1057,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
                 onCameraChanged(camera.id, false)
             }
             updateBanner()
+            renderActivityLog()
 
             val body = if (report.ok) report.summary else report.errors.joinToString("\n") { "• $it" }
             MaterialAlertDialogBuilder(this@MainActivity)
@@ -1071,6 +1110,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
                 }
             }
             updateBanner()
+            renderActivityLog()
 
             val body = if (report.ok) {
                 "Stream/RTSP semua kamera berhasil dimatikan."
