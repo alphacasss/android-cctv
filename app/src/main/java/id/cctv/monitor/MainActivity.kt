@@ -214,6 +214,12 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         ) { _, bundle ->
             val id = bundle.getInt(CameraControlSheet.KEY_CAMERA_ID, -1)
             val refresh = bundle.getBoolean(CameraControlSheet.KEY_REFRESH, false)
+            val activityOnly = bundle.getBoolean(CameraControlSheet.KEY_ACTIVITY_ONLY, false)
+            if (activityOnly) {
+                updateBanner()
+                renderActivityLog()
+                return@setFragmentResultListener
+            }
             if (id > 0) onCameraChanged(id, refresh)
             updateBanner()
             renderActivityLog()

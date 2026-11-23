@@ -31,6 +31,28 @@ class ActivityLogCodecTest {
     }
 
     @Test
+    fun roundTrip_menjagaCarriageReturn() {
+        val entry = ActivityLogEntry(1L, "A\rB", "C\rD")
+
+        assertEquals(
+            listOf(entry),
+            ActivityLogCodec.decode(ActivityLogCodec.encode(listOf(entry)))
+        )
+    }
+
+    @Test
+    fun append_mengurutkanMenurutWaktu() {
+        val raw = ActivityLogCodec.encode(listOf(ActivityLogEntry(100L, "LAMA", "x")))
+
+        val result = ActivityLogCodec.decode(
+            ActivityLogCodec.append(raw, ActivityLogEntry(50L, "TUA", "y"))
+        )
+
+        assertEquals(100L, result.first().at)
+        assertEquals(50L, result.last().at)
+    }
+
+    @Test
     fun append_menyimpanTigaPuluhEntriTerbaru() {
         val raw = ActivityLogCodec.encode(
             (30L downTo 1L).map { ActivityLogEntry(it, "T$it", "d$it") }

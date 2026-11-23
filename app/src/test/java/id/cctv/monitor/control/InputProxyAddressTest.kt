@@ -33,4 +33,13 @@ class InputProxyAddressTest {
         assertFalse(InputProxyAddress.isDummy("192.168.100.26"))
         assertFalse(InputProxyAddress.isDummy(null))
     }
+
+    @Test
+    fun butuhTulisUlang_alamatLegacyKanalLain() {
+        assertTrue(InputProxyAddress.needsRewrite("192.0.2.1", 3))
+        assertTrue(InputProxyAddress.needsRewrite("192.0.2.8", 3))
+        assertFalse(InputProxyAddress.needsRewrite("192.0.2.3", 3))
+        assertFalse(InputProxyAddress.needsRewrite("192.168.100.26", 3))
+        assertFalse(InputProxyAddress.needsRewrite(null, 3))
+    }
 }

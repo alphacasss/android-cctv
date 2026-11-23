@@ -60,21 +60,24 @@ class AppPrefs(context: Context) {
         set(value) = prefs.edit().putString(KEY_PASS, value).apply()
 
     /** Catatan aksi kontrol terbaru (terbaru lebih dulu). */
-    fun activityLog(): List<ActivityLogEntry> =
+    fun activityLog(): List<ActivityLogEntry> = runCatching {
         ActivityLogCodec.decode(prefs.getString(KEY_ACTIVITY_LOG, null))
+    }.getOrDefault(emptyList())
 
     /** Tambah catatan aksi; jumlah entri dibatasi oleh codec. */
     fun addActivity(title: String, detail: String) {
-        val entry = ActivityLogEntry(
-            at = System.currentTimeMillis(),
-            title = title.trim(),
-            detail = detail.trim()
-        )
-        val raw = ActivityLogCodec.append(
-            prefs.getString(KEY_ACTIVITY_LOG, null),
-            entry
-        )
-        prefs.edit().putString(KEY_ACTIVITY_LOG, raw).apply()
+        runCatching {
+            val entry = ActivityLogEntry(
+                at = System.currentTimeMillis(),
+                title = title.trim(),
+                detail = detail.trim()
+            )
+            val raw = ActivityLogCodec.append(
+                prefs.getString(KEY_ACTIVITY_LOG, null),
+                entry
+            )
+            prefs.edit().putString(KEY_ACTIVITY_LOG, raw).apply()
+        }
     }
 
     var autoRestore: Boolean

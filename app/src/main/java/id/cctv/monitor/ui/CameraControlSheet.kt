@@ -37,6 +37,7 @@ class CameraControlSheet : BottomSheetDialogFragment() {
         const val REQUEST_KEY = "camera_control_result"
         const val KEY_CAMERA_ID = "camera_id"
         const val KEY_REFRESH = "refresh"
+        const val KEY_ACTIVITY_ONLY = "activity_only"
 
         fun newInstance(cameraId: Int): CameraControlSheet =
             CameraControlSheet().apply {
@@ -631,7 +632,9 @@ class CameraControlSheet : BottomSheetDialogFragment() {
             setBusy(false)
             refreshUi()
             tvStatus.text = message
-            if (success) sendResult(refresh = false)
+            // Aksi gagal tetap tercatat di log, tapi tidak boleh memicu refresh
+            // pemutaran; cukup beri tahu beranda untuk memperbarui card log.
+            sendResult(refresh = false, activityOnly = !success)
         }
     }
 
@@ -652,11 +655,15 @@ class CameraControlSheet : BottomSheetDialogFragment() {
         btnRefresh.isEnabled = !value
     }
 
-    private fun sendResult(refresh: Boolean) {
+    private fun sendResult(refresh: Boolean, activityOnly: Boolean = false) {
         if (!isAdded) return
         parentFragmentManager.setFragmentResult(
             REQUEST_KEY,
-            bundleOf(KEY_CAMERA_ID to cameraId, KEY_REFRESH to refresh)
+            bundleOf(
+                KEY_CAMERA_ID to cameraId,
+                KEY_REFRESH to refresh,
+                KEY_ACTIVITY_ONLY to activityOnly
+            )
         )
     }
 }

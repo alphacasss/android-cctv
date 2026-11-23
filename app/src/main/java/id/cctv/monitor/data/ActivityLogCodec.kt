@@ -25,8 +25,8 @@ object ActivityLogCodec {
 
     fun append(raw: String?, entry: ActivityLogEntry, max: Int = 30): String {
         val entries = ArrayList<ActivityLogEntry>(decode(raw))
-        entries.add(0, entry)
-        return encode(entries.take(max))
+        entries.add(entry)
+        return encode(entries.sortedByDescending { it.at }.take(max))
     }
 
     private fun escape(value: String): String = buildString {
@@ -35,6 +35,7 @@ object ActivityLogCodec {
                 '\\' -> append("\\\\")
                 '|' -> append("\\|")
                 '\n' -> append("\\n")
+                '\r' -> append("\\r")
                 else -> append(ch)
             }
         }
@@ -50,6 +51,7 @@ object ActivityLogCodec {
                     current.append(
                         when (ch) {
                             'n' -> '\n'
+                            'r' -> '\r'
                             '|' -> '|'
                             '\\' -> '\\'
                             else -> ch

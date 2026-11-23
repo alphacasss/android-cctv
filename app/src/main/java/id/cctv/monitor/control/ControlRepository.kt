@@ -721,12 +721,16 @@ class ControlRepository(
         else -> "NORMAL"
     }
 
+    // Logging tidak boleh mengubah hasil kontrol: kegagalan penyimpanan log
+    // harus diabaikan agar aksi perangkat tetap sukses/gagal sesuai faktanya.
     private fun logSingle(cam: Camera, action: String, ok: Boolean = true) {
-        prefs.addActivity(cam.displayName, if (ok) "$action berhasil" else "$action gagal")
+        runCatching {
+            prefs.addActivity(cam.displayName, if (ok) "$action berhasil" else "$action gagal")
+        }
     }
 
     private fun logBulk(title: String, total: Int, errors: Int) {
-        prefs.addActivity(title, "$total kamera • $errors gagal")
+        runCatching { prefs.addActivity(title, "$total kamera • $errors gagal") }
     }
 
     // ---------------- diagnostik ----------------
@@ -1029,7 +1033,9 @@ class ControlRepository(
         }
 
         val dummyIp = InputProxyAddress.dummyIp(cam.channel)
-        if (InputProxyAddress.isDummy(currentIp)) {
+        if (InputProxyAddress.isDummy(currentIp) &&
+            !InputProxyAddress.needsRewrite(currentIp, cam.channel)
+        ) {
             Log.d(TAG, "inputProxy cam=${cam.id} sudah terputus ip=$currentIp")
             return true
         }
@@ -1037,10 +1043,17 @@ class ControlRepository(
             Log.w(TAG, "inputProxy cam=${cam.id}: ipAddress tidak ditemukan")
             return false
         }
-        val backup = store.read(cam.id, BackupKind.INPUT_PROXY) ?: body.also {
+        // IP dummy peninggalan versi lama memakai satu alamat untuk semua kanal.
+        // Bangun ulang dari backup agar kanal ini mendapat alamat uniknya dan
+        // NVR tidak menolaknya sebagai duplikat.
+        val backup = store.read(cam.id, BackupKind.INPUT_PROXY)
+        val baseBody = backup ?: if (InputProxyAddress.isDummy(currentIp)) {
+            Log.w(TAG, "inputProxy cam=${cam.id}: dummy legacy tanpa backup, tidak bisa dikoreksi")
+            return false
+        } else body.also {
             store.write(cam.id, BackupKind.INPUT_PROXY, it)
         }
-        val offlineBody = replaceInputProxyIp(body, dummyIp) ?: return false
+        val offlineBody = replaceInputProxyIp(baseBody, dummyIp) ?: return false
         val put = client.put(path, offlineBody)
         if (put.code != 200) {
             Log.w(TAG, "inputProxy off cam=${cam.id} via ${client.label}: PUT ${put.code}")
@@ -1050,7 +1063,7 @@ class ControlRepository(
         val applied = verify.code == 200 &&
             inputProxyIp(verify.body.orEmpty()) == dummyIp
         if (!applied) {
-            runCatching { client.put(path, backup) }
+            runCatching { client.put(path, baseBody) }
             Log.w(TAG, "inputProxy off cam=${cam.id}: perangkat tidak mengonfirmasi IP dummy")
         } else {
             Log.d(TAG, "inputProxy off cam=${cam.id} route=${client.label} ip=$dummyIp")

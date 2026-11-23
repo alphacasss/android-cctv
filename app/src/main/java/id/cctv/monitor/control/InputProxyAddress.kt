@@ -16,4 +16,12 @@ object InputProxyAddress {
         val host = ip.removePrefix(PREFIX).toIntOrNull() ?: return false
         return host in 1..254
     }
+
+    /**
+     * Alamat dummy peninggalan versi lama (satu IP untuk semua kanal) harus
+     * ditulis ulang ke alamat kanonik kanal ini, jika tidak NVR menolaknya sebagai
+     * duplikat saat kanal lain memakai alamat yang sama.
+     */
+    fun needsRewrite(ip: String?, channel: Int): Boolean =
+        isDummy(ip) && ip != dummyIp(channel)
 }
