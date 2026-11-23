@@ -89,22 +89,26 @@ class ControlRepository(
 
     // ---------------- privacy mask (HITAM / NORMAL) ----------------
 
-    suspend fun setBlack(cam: Camera, on: Boolean) = withContext(Dispatchers.IO) {
-        val path = privacyPath(cam)
-        var lastError: Exception? = null
-        for (attempt in attempts(cam, Feature.PRIVACY)) {
-            try {
-                Log.d(TAG, "setBlack cam=${cam.id} on=$on route=${attempt.client.label} path=$path")
-                if (on) applyBlack(attempt.client, cam, path) else restoreBlack(attempt.client, cam, path)
-                Log.d(TAG, "setBlack berhasil cam=${cam.id} on=$on route=${attempt.client.label}")
-                return@withContext
-            } catch (e: Exception) {
-                lastError = e
-                Log.w(TAG, "setBlack cam=${cam.id} via ${attempt.client.label} gagal: ${e.message}")
+    suspend fun setBlack(cam: Camera, on: Boolean, log: Boolean = true) =
+        withContext(Dispatchers.IO) {
+            val path = privacyPath(cam)
+            val action = if (on) "Privacy mask aktif" else "Privacy mask normal"
+            var lastError: Exception? = null
+            for (attempt in attempts(cam, Feature.PRIVACY)) {
+                try {
+                    Log.d(TAG, "setBlack cam=${cam.id} on=$on route=${attempt.client.label} path=$path")
+                    if (on) applyBlack(attempt.client, cam, path) else restoreBlack(attempt.client, cam, path)
+                    Log.d(TAG, "setBlack berhasil cam=${cam.id} on=$on route=${attempt.client.label}")
+                    if (log) logSingle(cam, action)
+                    return@withContext
+                } catch (e: Exception) {
+                    lastError = e
+                    Log.w(TAG, "setBlack cam=${cam.id} via ${attempt.client.label} gagal: ${e.message}")
+                }
             }
+            if (log) logSingle(cam, action, ok = false)
+            throw lastError ?: IsapiException("Tidak ada rute kontrol yang tersedia untuk privacy mask.")
         }
-        throw lastError ?: IsapiException("Tidak ada rute kontrol yang tersedia untuk privacy mask.")
-    }
 
     private suspend fun applyBlack(client: CamClient, cam: Camera, path: String) {
         val current = client.get(path)
@@ -249,7 +253,8 @@ class ControlRepository(
      * firmware perangkat mengabaikan perubahan ISAPI (kasus pada beberapa NVR).
      * @return true bila perangkat mengonfirmasi perubahan status.
      */
-    suspend fun setStream(cam: Camera, on: Boolean): Boolean = withContext(Dispatchers.IO) {
+    suspend fun setStream(cam: Camera, on: Boolean, log: Boolean = true): Boolean =
+        withContext(Dispatchers.IO) {
         val kind = if (cam.isNvr) BackupKind.NVR_SUB else BackupKind.STREAM
         val path = streamPath(cam)
         var deviceApplied = false
@@ -281,6 +286,7 @@ class ControlRepository(
             }
         }
         prefs.setFlags(cam.id, prefs.flags(cam.id).copy(streamOff = !on))
+        if (log) logSingle(cam, if (on) "Stream aktif" else "Stream mati", deviceApplied)
         deviceApplied
     }
 
@@ -315,12 +321,13 @@ class ControlRepository(
 
     // ---------------- layanan RTSP (paksa mati) ----------------
 
-    suspend fun setRtsp(cam: Camera, on: Boolean): Boolean = withContext(Dispatchers.IO) {
+    suspend fun setRtsp(cam: Camera, on: Boolean, log: Boolean = true): Boolean =
+        withContext(Dispatchers.IO) {
         if (cam.isNvr) {
             // Mematikan layanan RTSP level NVR akan menghentikan SEMUA kanal.
             // Untuk kanal NVR, "RTSP OFF" diartikan sebagai penghentian kanal
             // ini saja (main + sub), memakai jalur streaming channel yang benar.
-            val applied = setNvr(cam, on)
+            val applied = setNvr(cam, on, log = log)
             prefs.setFlags(cam.id, prefs.flags(cam.id).copy(rtspOff = !on))
             return@withContext applied
         }
@@ -332,12 +339,14 @@ class ControlRepository(
                 applyRtsp(attempt.client, cam, on)
                 prefs.setFlags(cam.id, prefs.flags(cam.id).copy(rtspOff = !on))
                 Log.d(TAG, "setRtsp berhasil cam=${cam.id} on=$on route=${attempt.client.label}")
+                if (log) logSingle(cam, if (on) "RTSP aktif" else "RTSP mati")
                 return@withContext true
             } catch (e: Exception) {
                 lastError = e
                 Log.w(TAG, "setRtsp cam=${cam.id} via ${attempt.client.label} gagal: ${e.message}")
             }
         }
+        if (log) logSingle(cam, if (on) "RTSP aktif" else "RTSP mati", ok = false)
         throw lastError ?: IsapiException("Tidak ada rute kontrol yang tersedia untuk RTSP.")
     }
 
@@ -428,7 +437,8 @@ class ControlRepository(
      * juga tetap diubah supaya pemutaran di grid berhenti walau sebagian rute
      * gagal. Nilai kembalian menunjukkan apakah perangkat ikut berubah.
      */
-    suspend fun setNvr(cam: Camera, on: Boolean): Boolean = withContext(Dispatchers.IO) {
+    suspend fun setNvr(cam: Camera, on: Boolean, log: Boolean = true): Boolean =
+        withContext(Dispatchers.IO) {
         if (!cam.isNvr) {
             throw IsapiException("${cam.displayName} bukan kamera NVR.")
         }
@@ -473,6 +483,7 @@ class ControlRepository(
         }
         // Flag lokal adalah sumber keputusan pemutaran di MainActivity.
         prefs.setFlags(cam.id, prefs.flags(cam.id).copy(nvrOff = !on))
+        if (log) logSingle(cam, if (on) "Kanal NVR aktif" else "Kanal NVR mati", deviceApplied)
         deviceApplied
     }
 
@@ -510,6 +521,7 @@ class ControlRepository(
                                 }
                                 persistDayNight(cam, state)
                                 Log.d(TAG, "setDayNight cam=${cam.id} route=${attempt.client.label} OK")
+                                logSingle(cam, "Mode $value")
                                 return@withContext true
                             }
                             routeErrors += "$path → PUT HTTP ${put.code}"
@@ -530,6 +542,7 @@ class ControlRepository(
         // agar overlay mode malam dan status aplikasi berubah dengan jujur.
         persistDayNight(cam, mode)
         Log.w(TAG, "setDayNight cam=${cam.id} mode=$mode fallback lokal; detail=${errors.joinToString("; ")}")
+        logSingle(cam, "Mode $value", ok = false)
         false
     }
 
@@ -558,7 +571,7 @@ class ControlRepository(
             val flags = prefs.flags(cam.id)
 
             if (flags.rtspOff) {
-                runCatching { setRtsp(cam, true) }
+                runCatching { setRtsp(cam, true, log = false) }
                     .onFailure { errors.add("${cam.displayName}: RTSP — ${it.message}") }
                 // Flag lokal tetap dibersihkan walau perangkat tidak merespons.
                 prefs.setFlags(
@@ -569,7 +582,7 @@ class ControlRepository(
             if (flags.streamOff || store.exists(cam.id, BackupKind.STREAM) ||
                 store.exists(cam.id, BackupKind.INPUT_PROXY)
             ) {
-                runCatching { setStream(cam, true) }
+                runCatching { setStream(cam, true, log = false) }
                     .onFailure { errors.add("${cam.displayName}: stream — ${it.message}") }
                 prefs.setFlags(cam.id, prefs.flags(cam.id).copy(streamOff = false))
             }
@@ -578,19 +591,20 @@ class ControlRepository(
                     store.exists(cam.id, BackupKind.NVR_SUB) ||
                     store.exists(cam.id, BackupKind.INPUT_PROXY))
             ) {
-                runCatching { setNvr(cam, true) }
+                runCatching { setNvr(cam, true, log = false) }
                     .onFailure { errors.add("${cam.displayName}: kanal NVR — ${it.message}") }
                 prefs.setFlags(cam.id, prefs.flags(cam.id).copy(nvrOff = false))
             } else if (!cam.isNvr && !flags.rtspOff && store.exists(cam.id, BackupKind.RTSP)) {
-                runCatching { setRtsp(cam, true) }
+                runCatching { setRtsp(cam, true, log = false) }
                     .onFailure { errors.add("${cam.displayName}: RTSP — ${it.message}") }
                 prefs.setFlags(cam.id, prefs.flags(cam.id).copy(rtspOff = false))
             }
             if (flags.black || store.exists(cam.id, BackupKind.PRIVACY)) {
-                runCatching { setBlack(cam, false) }
+                runCatching { setBlack(cam, false, log = false) }
                     .onFailure { errors.add("${cam.displayName}: privacy mask — ${it.message}") }
             }
         }
+        logBulk("PULIHKAN SEMUA", cameras.count { it.enabled }, errors.size)
         RestoreReport(errors)
     }
 
@@ -605,7 +619,8 @@ class ControlRepository(
      * `<enabled>`, jadi panggilan jaringan tidak memberi manfaat tambahan.
      */
     suspend fun setAllCamerasOff(cameras: List<Camera>): BulkResult = withContext(Dispatchers.IO) {
-        for (cam in cameras.filter { it.enabled }) {
+        val targets = cameras.filter { it.enabled }
+        for (cam in targets) {
             val flags = prefs.flags(cam.id)
             if (flags.blocked) continue
             prefs.setFlags(
@@ -613,6 +628,7 @@ class ControlRepository(
                 flags.copy(streamOff = true, rtspOff = true, nvrOff = true)
             )
         }
+        logBulk("MATIKAN SEMUA", targets.size, 0)
         BulkResult(emptyList())
     }
 
@@ -623,9 +639,10 @@ class ControlRepository(
      */
     suspend fun setAllRtspOff(cameras: List<Camera>): BulkResult = withContext(Dispatchers.IO) {
         val outcomes = mutableListOf<BulkOutcome>()
-        for (cam in cameras.filter { it.enabled }) {
+        val targets = cameras.filter { it.enabled }
+        for (cam in targets) {
             val outcome = try {
-                BulkOutcome(cam.displayName, applied = setRtsp(cam, false))
+                BulkOutcome(cam.displayName, applied = setRtsp(cam, false, log = false))
             } catch (e: Exception) {
                 BulkOutcome(
                     cam.displayName,
@@ -636,7 +653,9 @@ class ControlRepository(
             outcomes += outcome
             prefs.setFlags(cam.id, prefs.flags(cam.id).copy(rtspOff = true))
         }
-        BulkResult.from(outcomes)
+        val report = BulkResult.from(outcomes)
+        logBulk("MATIKAN SEMUA RTSP", targets.size, report.errors.size)
+        report
     }
 
     /**
@@ -645,7 +664,8 @@ class ControlRepository(
      */
     suspend fun setAllCamerasOn(cameras: List<Camera>): BulkResult = withContext(Dispatchers.IO) {
         val errors = mutableListOf<String>()
-        for (cam in cameras.filter { it.enabled }) {
+        val targets = cameras.filter { it.enabled }
+        for (cam in targets) {
             val flags = prefs.flags(cam.id)
             val needsDeviceRestore = store.exists(cam.id, BackupKind.INPUT_PROXY) ||
                 store.exists(cam.id, BackupKind.RTSP) ||
@@ -653,14 +673,17 @@ class ControlRepository(
                 store.exists(cam.id, BackupKind.NVR) ||
                 store.exists(cam.id, BackupKind.NVR_SUB)
             if (needsDeviceRestore) {
-                runCatching { if (cam.isNvr) setNvr(cam, true) else setRtsp(cam, true) }
-                    .onFailure { errors += "${cam.displayName}: ${it.message ?: "Gagal memulihkan perangkat."}" }
+                runCatching {
+                    if (cam.isNvr) setNvr(cam, true, log = false)
+                    else setRtsp(cam, true, log = false)
+                }.onFailure { errors += "${cam.displayName}: ${it.message ?: "Gagal memulihkan perangkat."}" }
             }
             prefs.setFlags(
                 cam.id,
                 flags.copy(streamOff = false, rtspOff = false, nvrOff = false)
             )
         }
+        logBulk("NYALAKAN SEMUA", targets.size, errors.size)
         BulkResult(errors)
     }
 
@@ -674,13 +697,19 @@ class ControlRepository(
     suspend fun setAllBlack(cameras: List<Camera>, on: Boolean): BulkResult =
         withContext(Dispatchers.IO) {
             val errors = mutableListOf<String>()
-            for (cam in cameras.filter { it.enabled }) {
+            val targets = cameras.filter { it.enabled }
+            for (cam in targets) {
                 try {
-                    setBlack(cam, on)
+                    setBlack(cam, on, log = false)
                 } catch (e: Exception) {
                     errors += "${cam.displayName}: ${e.message ?: "Gagal mengubah privacy mask."}"
                 }
             }
+            logBulk(
+                if (on) "HITAMKAN SEMUA" else "PULIHKAN PRIVACY MASK",
+                targets.size,
+                errors.size
+            )
             BulkResult(errors)
         }
 
@@ -690,6 +719,14 @@ class ControlRepository(
         flags.nvrOff -> "NVR OFF"
         flags.black -> "HITAM"
         else -> "NORMAL"
+    }
+
+    private fun logSingle(cam: Camera, action: String, ok: Boolean = true) {
+        prefs.addActivity(cam.displayName, if (ok) "$action berhasil" else "$action gagal")
+    }
+
+    private fun logBulk(title: String, total: Int, errors: Int) {
+        prefs.addActivity(title, "$total kamera • $errors gagal")
     }
 
     // ---------------- diagnostik ----------------
@@ -830,7 +867,10 @@ class ControlRepository(
                         continue
                     }
                     val put = attempt.client.put(path, updated)
-                    if (put.code == 200) return@withContext
+                    if (put.code == 200) {
+                        logSingle(cam, if (on) "Lampu tambahan aktif" else "Lampu tambahan mati")
+                        return@withContext
+                    }
                     routeErrors += "$path → PUT HTTP ${put.code}"
                 } catch (e: Exception) {
                     routeErrors += "$path → ${e.message}"
@@ -838,6 +878,7 @@ class ControlRepository(
             }
             errors += routeErrors.map { "${attempt.client.label}: $it" }
         }
+        logSingle(cam, if (on) "Lampu tambahan aktif" else "Lampu tambahan mati", ok = false)
         throw IsapiException(
             "Lampu putih tidak didukung/diizinkan kamera. Detail: ${errors.joinToString("; ")}"
         )
@@ -1095,6 +1136,7 @@ class ControlRepository(
                     }
                     persistMovementDetect(cam, state)
                     Log.d(TAG, "setMovementDetect cam=${cam.id} route=${attempt.client.label} OK")
+                    logSingle(cam, if (on) "Deteksi gerak aktif" else "Deteksi gerak mati")
                     return@withContext
                 } catch (e: Exception) {
                     routeErrors += "$path → ${e.message}"
@@ -1103,6 +1145,7 @@ class ControlRepository(
             }
             errors += routeErrors.map { "${attempt.client.label}: $it" }
         }
+        logSingle(cam, if (on) "Deteksi gerak aktif" else "Deteksi gerak mati", ok = false)
         throw IsapiException(
             "Sensor gerak tidak didukung/diizinkan kamera (HTTP 403/404). " +
                 "Detail: ${errors.joinToString("; ")}"
