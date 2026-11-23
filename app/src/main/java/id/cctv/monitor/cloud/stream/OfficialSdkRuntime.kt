@@ -1,6 +1,7 @@
 package id.cctv.monitor.cloud.stream
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import android.view.Surface
 import dalvik.system.DexClassLoader
@@ -9,6 +10,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
+import java.util.zip.ZipFile
 
 /**
  * Loader + inisialisasi sekali untuk DEX dan native library resmi Hik-Connect.
@@ -45,10 +47,15 @@ object OfficialSdkRuntime {
             if (ready) return@synchronized true
             try {
                 val app = context.applicationContext
-                val zip = prepareDexZip(app)
-                val dexOut = File(app.codeCacheDir, "hikdex").apply { mkdirs() }
+                if (!supportsNativeLibraries(app)) {
+                    throw UnsatisfiedLinkError(
+                        "SDK resmi membutuhkan arm64-v8a; perangkat ini memakai relay cloud"
+                    )
+                }
+                val dexPaths = prepareDexFiles(app)
+                val dexOut = File(app.codeCacheDir, "hikdex-opt").apply { mkdirs() }
                 loader = DexClassLoader(
-                    zip.absolutePath,
+                    dexPaths.joinToString(File.pathSeparator) { it.absolutePath },
                     dexOut.absolutePath,
                     app.applicationInfo.nativeLibraryDir,
                     app.classLoader
@@ -89,23 +96,73 @@ object OfficialSdkRuntime {
 
     fun lastError(): String? = initError
 
-    private fun prepareDexZip(context: Context): File {
-        val zip = File(context.filesDir, "hikclasses.zip")
-        val expected = try {
-            context.assets.openFd(ASSET_ZIP).use { it.length }
-        } catch (_: Exception) {
-            -1L
+    /**
+     * SDK resmi hanya dikirim untuk arm64-v8a. Perangkat 32-bit/x86 tidak
+     * perlu mengunyah dex 19 MB; pemutar akan langsung memakai relay cloud.
+     */
+    private fun supportsNativeLibraries(context: Context): Boolean {
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+        if (File(nativeDir, "libezstreamclient.so").exists()) return true
+        return Build.SUPPORTED_ABIS.firstOrNull()
+            ?.equals("arm64-v8a", ignoreCase = true) == true
+    }
+
+    /**
+     * Ekstrak seluruh dex dari arsip SDK dengan nama kanonik.
+     *
+     * `hikclasses.zip` berisi `classes3.dex` (PlayM4) dan `classes12.dex`
+     * (NativeApi/EZTaskMgr). Sebagian ART hanya memuat dex bernama `classes.dex`
+     * / `classes2.dex`, sehingga `NativeApi` tidak ditemukan di perangkat lain.
+     * Membersihkan direktori lama juga mencegah dex basi setelah update APK.
+     */
+    private fun prepareDexFiles(context: Context): List<File> {
+        // `openFd` tidak bisa dipakai: aset zip terkompresi di dalam APK.
+        // Versi APK cukup sebagai penanda karena isi aset hanya berubah saat rilis.
+        val signature = try {
+            context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode.toString()
+        } catch (_: Throwable) {
+            "unknown"
         }
-        if (!zip.exists() || (expected > 0 && zip.length() != expected)) {
-            if (zip.exists()) zip.setWritable(true)
+        val marker = File(context.filesDir, "hikdex.ready")
+        val dexDir = File(context.filesDir, "hikdex")
+        val cached = dexDir.listFiles()?.filter { it.name.endsWith(".dex") }.orEmpty()
+        if (marker.isFile && marker.readText().trim() == signature &&
+            cached.any { it.name == "classes.dex" } && cached.size >= 2
+        ) {
+            return cached.sortedBy { it.name }
+        }
+
+        val staging = File(context.filesDir, "hikdex.tmp")
+        val tempZip = File(context.filesDir, "hikclasses.tmp.zip")
+        try {
+            if (staging.exists()) staging.deleteRecursively()
+            staging.mkdirs()
             context.assets.open(ASSET_ZIP).use { input ->
-                FileOutputStream(zip).use { output -> input.copyTo(output) }
+                FileOutputStream(tempZip).use { output -> input.copyTo(output) }
             }
+            val mappings = ZipFile(tempZip).use { zip ->
+                DexLayout.canonicalNames(zip.entries().toList().map { it.name })
+            }
+            require(mappings.isNotEmpty()) { "Tidak ada dex di $ASSET_ZIP" }
+            ZipFile(tempZip).use { zip ->
+                for ((original, canonical) in mappings) {
+                    val entry = zip.getEntry(original) ?: throw IllegalStateException("Dex hilang: $original")
+                    val out = File(staging, canonical)
+                    zip.getInputStream(entry).use { input ->
+                        FileOutputStream(out).use { output -> input.copyTo(output) }
+                    }
+                    // ART menolak dex yang masih writable.
+                    out.setReadOnly()
+                }
+            }
+            if (dexDir.exists()) dexDir.deleteRecursively()
+            require(staging.renameTo(dexDir)) { "Gagal memasang direktori dex SDK" }
+            marker.writeText(signature)
+            return dexDir.listFiles()!!.filter { it.name.endsWith(".dex") }.sortedBy { it.name }
+        } finally {
+            tempZip.delete()
+            if (staging.exists()) staging.deleteRecursively()
         }
-        // DexClassLoader menolak dex zip yang masih writable.
-        zip.setReadable(true)
-        zip.setWritable(false)
-        return zip
     }
 
     private fun call(name: String, vararg args: Any?): Any? {

@@ -32,13 +32,26 @@ class OfficialSdkPlayer(
     private val surfaceView: SurfaceView,
     private val sourceProvider: suspend (Boolean) -> CloudStreamSource?,
     private val listener: CloudVideoPlayer.Listener,
-    private val channelSerialProvider: () -> String = { "" }
+    private val channelSerialProvider: () -> String = { "" },
+    private val onVerificationCode: (String, String) -> Unit = { _, _ -> }
 ) : CloudPlayer {
 
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
     private var handle = 0L
+
+    /** Dipakai bila SDK tidak bisa dipasang/diinisialisasi di perangkat ini. */
+    @Volatile
+    private var relayFallback: CloudVideoPlayer? = null
+
+    private val relayListener = object : CloudVideoPlayer.Listener {
+        override fun onState(state: CloudVideoPlayer.State, message: String?) {
+            emit(generation, state, message)
+        }
+
+        override fun onVideoSize(width: Int, height: Int) = listener.onVideoSize(width, height)
+    }
 
     /** Berubah setiap start/stop; dipakai menolak handle yang terbuka terlambat. */
     private var generation = 0
@@ -85,6 +98,8 @@ class OfficialSdkPlayer(
         val active = handle
         handle = 0L
         if (active != 0L) OfficialSdkRuntime.closeStream(active)
+        relayFallback?.let { relay -> main.post { relay.release() } }
+        relayFallback = null
         if (notify) emit(generation, CloudVideoPlayer.State.STOPPED, null)
     }
 
@@ -100,21 +115,30 @@ class OfficialSdkPlayer(
             if (token != generation || !isActive) return@withContext
             val app = surfaceView.context.applicationContext as? CctvApp
             val session = app?.cloudAuth?.session?.value
-            val opened = OfficialSdkRuntime.openStream(
-                context = surfaceView.context.applicationContext,
-                source = source,
-                verificationCode = source.verificationCode,
-                channelSerial = channelSerialProvider(),
-                clientSession = session?.accessToken.orEmpty(),
-                userId = session?.userId.orEmpty(),
-                surface = surface,
-                onData = { _, _ -> Unit },
-                onEvent = { name, code, extra ->
-                    if (name == "onErrorListener") {
-                        emit(token, CloudVideoPlayer.State.ERROR, "SDK resmi error $code/$extra")
+            val opened = try {
+                OfficialSdkRuntime.openStream(
+                    context = surfaceView.context.applicationContext,
+                    source = source,
+                    verificationCode = source.verificationCode,
+                    channelSerial = channelSerialProvider(),
+                    clientSession = session?.accessToken.orEmpty(),
+                    userId = session?.userId.orEmpty(),
+                    surface = surface,
+                    onData = { _, _ -> Unit },
+                    onEvent = { name, code, extra ->
+                        if (name == "onErrorListener") {
+                            emit(token, CloudVideoPlayer.State.ERROR, "SDK resmi error $code/$extra")
+                        }
                     }
-                }
-            )
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                if (token != generation || !isActive) throw e
+                Log.w(TAG, "SDK tidak dapat dipakai, beralih ke relay cloud", e)
+                startRelayFallback(mainStream, token)
+                return@withContext
+            }
             // stop() bisa terjadi saat native masih membuka handle. Tutup handle
             // yang terlambat agar stream tidak hidup di tile yang sudah dilepas.
             if (token != generation || !isActive) {
@@ -133,6 +157,23 @@ class OfficialSdkPlayer(
             Log.w(TAG, "SDK stream gagal", e)
             emit(token, CloudVideoPlayer.State.ERROR, e.message ?: "SDK stream gagal")
         }
+    }
+
+    /**
+     * Jalur cadangan memakai relay `ysproto` + MediaCodec (tanpa SDK native).
+     * Dipakai otomatis saat dex/library SDK tidak tersedia di perangkat.
+     */
+    private fun startRelayFallback(mainStream: Boolean, token: Int) {
+        if (token != generation) return
+        val relay = CloudVideoPlayer(
+            surfaceView,
+            sourceProvider,
+            relayListener,
+            onVerificationCode = onVerificationCode
+        )
+        relayFallback = relay
+        relay.showSurface(true)
+        relay.start(mainStream)
     }
 
     private suspend fun awaitSurface(): Surface? {

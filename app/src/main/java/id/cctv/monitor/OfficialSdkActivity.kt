@@ -50,7 +50,7 @@ class OfficialSdkActivity : AppCompatActivity() {
                     "${device.serial}|${device.channel}|$mainStream",
                     "${device.serial}|${device.channel}|false"
                 ).firstOrNull { app.cloudSourceCache.containsKey(it) }
-                app.cloudSourceCache[key] ?: app.cloudRepo.streamSource(
+                key?.let { app.cloudSourceCache[it] } ?: app.cloudRepo.streamSource(
                     app.cloudAuth.session.value,
                     device,
                     mainStream

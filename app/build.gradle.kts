@@ -22,8 +22,8 @@ android {
         applicationId = "id.cctv.monitor"
         minSdk = 24
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.1.2"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -101,4 +101,5 @@ dependencies {
     implementation("org.videolan.android:libvlc-all:3.7.7")
     // Deteksi objek di perangkat (manusia/hewan/kendaraan) untuk filter sensor gerak.
     implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
+    testImplementation("junit:junit:4.13.2")
 }

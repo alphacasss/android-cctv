@@ -206,26 +206,25 @@ class PlayerManager(context: Context, private val prefs: AppPrefs) {
 
             override fun onVideoSize(width: Int, height: Int) = Unit
         }
+        val onVerificationCode: (String, String) -> Unit = { serial, code ->
+            // Kanal bisa punya kode sendiri; utamakan serial kanal.
+            val channelSerial = camera.cloudDevice?.channelSerial.orEmpty()
+            prefs.saveCloudVerificationCode(channelSerial.ifBlank { serial }, code)
+        }
         val player: CloudPlayer = if (prefs.useOfficialSdk) {
             OfficialSdkPlayer(
                 surface,
                 { main -> provideCloudSource(camera, main) },
                 listener,
-                channelSerialProvider = { camera.cloudDevice?.channelSerial.orEmpty() }
+                channelSerialProvider = { camera.cloudDevice?.channelSerial.orEmpty() },
+                onVerificationCode = onVerificationCode
             )
         } else {
             CloudVideoPlayer(
                 surface,
                 { main -> provideCloudSource(camera, main) },
                 listener,
-                onVerificationCode = { serial, code ->
-                    // Kanal bisa punya kode sendiri; utamakan serial kanal.
-                    val channelSerial = camera.cloudDevice?.channelSerial.orEmpty()
-                    prefs.saveCloudVerificationCode(
-                        channelSerial.ifBlank { serial },
-                        code
-                    )
-                }
+                onVerificationCode = onVerificationCode
             )
         }
         slot.cloudPlayer = player
