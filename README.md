@@ -15,6 +15,9 @@ dideteksi otomatis, DDNS, atau VPN. Tanpa PC dan tanpa aplikasi perantara.
 - **Akses luar jaringan otomatis** — satu alamat publik untuk semua kamera,
   dideteksi sendiri lewat HTTPS; rute **LOKAL/LUAR** dipilih otomatis sesuai
   jaringan ponsel.
+- **Binding cloud Hik-Connect (opsional)** — login akun Hik-Connect, impor
+  device & kanal NVR, lalu **live stream dan snapshot dari mana saja** lewat
+  relay P2P cloud, tanpa port forwarding.
 
 Kontrol firewall tetap hanya ada di aplikasi PC (`cctv/CCTV-Control.ps1`);
 aplikasi Android ini tidak menyentuh firewall.
@@ -222,7 +225,77 @@ terus-menerus, dan HTTP/RTSP tidak terenkripsi. Urutan pilihan:
    ponsel, tetapi perjalanan data tetap tidak terenkripsi.
 
 Aplikasi tidak memakai UPnP dan tidak membuka port sendiri; semua aturan
-forwarding tetap di router. Tidak ada server relay — koneksi langsung ke kamera.
+forwarding tetap di router. Tanpa binding cloud, tidak ada server relay —
+koneksi langsung ke kamera. Dengan binding cloud, media boleh melewati relay
+resmi Hik-Connect (terenkripsi ECDH), tetapi kontrol tetap langsung ke kamera.
+
+## Cloud Hik-Connect (opsional)
+
+Binding cloud **tidak menggantikan** rute RTSP; ia menambah jalur live streaming
+dan snapshot dari akun Hik-Connect. Buka **⋮ pada tile → BIND KE CLOUD
+(Hik-Connect)**.
+
+1. Masukkan **email & password akun Hik-Connect** (bukan akun kamera), lalu
+   **LOGIN & SINKRON DEVICE**.
+2. Pilih device/kanal pada daftar, lalu **BIND KE KAMERA INI**. Untuk NVR,
+   setiap kanal tampil sebagai entri terpisah (`CH1`, `CH2`, …) dan nomor kanal
+   otomatis dipakai kamera.
+3. **LEPAS BINDING CLOUD** menghapus metadata cloud; pemutaran kembali memakai
+   alamat IP kamera yang tersimpan (IP hasil isi otomatis tidak dikembalikan).
+
+Yang didapat dari cloud:
+
+| Fitur | Cara kerja |
+|---|---|
+| Daftar device & kanal | `pagelist` + `cameras/info`; nama, tipe, firmware, serial, status online, IP lokal/WAN |
+| Isi otomatis | Nama kamera (bila kosong), IP lokal (bila IP kamera kosong), kanal & tipe NVR/kamera tunggal |
+| **Live stream P2P** | Relay `ysproto` VTM→VTDU (ECDH P-256 + ChaCha20), RTP/MPEG-PS, didekode MediaCodec — dipakai otomatis saat ponsel di luar subnet kamera |
+| Tombol **FOTO** di luar rumah | Snapshot lewat `/v3/devices/security/capture` tanpa port forwarding |
+| Perangkat terenkripsi | `isEncrypt=1` terdeteksi otomatis; isi **kode verifikasi perangkat** saat binding agar snapshot `hikencode` dan video live didekripsi (AES-128) |
+| Sesi | Disimpan di `EncryptedSharedPreferences`; token diperbarui otomatis lewat `refreshSessionId` |
+| Region | Domain API mengikuti `loginArea.apiDomain` (global/EU/US/…), termasuk kode 1100 |
+
+Cara pemutaran memilih rute secara otomatis:
+
+1. **Cloud P2P** — bila kanal terikat cloud dan ponsel berada di luar subnet
+   kamera (atau kamera ditandai **Selalu pakai alamat luar**), tile membuka
+   relay `ysproto` langsung ke server VTM/VTDU Hik-Connect. Tidak ada port
+   yang perlu dibuka di router.
+2. **RTSP/HTTP (LibVLC)** — untuk LAN, DDNS/IP publik + port forwarding, VPN,
+   atau bila ada **URL stream opsional** saat binding.
+3. Bila relay cloud gagal, aplikasi menampilkan pesan singkat lalu mencoba
+   rute RTSP lebih dulu; cloud dicoba lagi setelah jeda **60 detik**.
+
+Batasan penting:
+
+- **Kode verifikasi wajib untuk video terenkripsi.** Relay cloud tetap bisa
+  dihubungi, tetapi kanal dengan *Image and Video Encryption* mengirim video
+  terenkripsi AES. Isi kode verifikasi perangkat (biasanya 6 huruf pada label
+  NVR) di sheet binding; tanpa kode itu tile menampilkan pesan agar kode diisi
+  dan tidak menampilkan video.
+- **Kontrol kamera tetap lewat ISAPI.** Privacy mask, RTSP/stream on/off, dan
+  kanal NVR tidak tersedia lewat relay cloud; kontrol itu masih memerlukan
+  akses LAN/DDNS/VPN.
+- **Relay memakai token sekali pakai.** Setiap tile meminta token baru saat
+  mulai memutar; membuka banyak tile sekaligus bisa memperlambat permintaan
+  pertama. Stream akan mencoba ulang otomatis.
+- Bila punya gateway/SDK yang memberi URL stream siap pakai, isi field
+  **URL stream opsional** (`rtsp://…` atau `https://…`) saat binding. URL itu
+  dipakai player untuk grid maupun layar penuh (kredensial cloud disisipkan
+  otomatis bila belum ada).
+- Snapshot cloud dibatasi cloud sekitar **sekali per 10 menit per kanal**;
+  tombol FOTO tetap memakai ISAPI lebih dulu saat berada di LAN.
+- Untuk NVR/kamera dengan **Image and Video Encryption** (`isEncrypt=1`), isi
+  kode verifikasi perangkat (biasanya 6 huruf pada label) di sheet binding.
+  Tanpa kode itu snapshot dan live stream cloud tetap terenkripsi dan tidak
+  bisa ditampilkan; kode disimpan di penyimpanan terenkripsi aplikasi.
+- Kontrol kamera (privacy mask, RTSP, stream, kanal NVR) memakai ISAPI dan tetap
+  memerlukan akses LAN/DDNS/VPN. Relay cloud hanya untuk media (live/snapshot).
+- Login bisa meminta **CAPTCHA** bila akun sering gagal. Buka aplikasi
+  Hik-Connect resmi sekali, lalu login lagi di sini.
+- Sesi cloud disimpan terenkripsi di perangkat. Bila Keystore bermasalah,
+  aplikasi memberi peringatan dan memakai penyimpanan biasa — sama seperti
+  kredensial kamera.
 
 ## Arti kontrol
 
@@ -264,6 +337,19 @@ Urutan pemulihan: RTSP → sub-stream → kanal NVR → privacy mask.
   Pastikan kredensial benar sebelum menekan **Tes ISAPI** berulang kali.
 
 ## Troubleshooting
+
+**Cloud: tile menampilkan "Kode verifikasi perangkat kosong"**
+- Buka **⋮ → BIND KE CLOUD**, isi **kode verifikasi perangkat** (6 huruf pada
+  label NVR) lalu bind ulang kanal. Kode ini juga dipakai snapshot cloud.
+- Bila kode salah, video tetap tidak tampil; periksa label perangkat, bukan
+  password akun Hik-Connect.
+
+**Cloud: "Stream cloud tidak tersedia"**
+- Pastikan kanal sudah di-bind dan perangkat online di aplikasi Hik-Connect.
+- Login ulang cloud bila sesi sudah lama; token stream hanya berlaku beberapa
+  menit dan diambil ulang otomatis setiap tile diputar.
+- Relay cloud memakai TCP 8554/8664; jaringan kantor/hotel yang memblokir port
+  tersebut akan gagal. Aplikasi lalu memakai rute RTSP/DDNS.
 
 **Tile hitam / "Gagal — mencoba lagi"**
 - Pastikan ponsel berada di jaringan yang sama dengan kamera (192.168.100.0/24),
@@ -327,6 +413,28 @@ dengan profil H.264 yang tidak umum.
 Jangan membersihkan data aplikasi atau mengubah keystore perangkat; data
 terenkripsi tidak bisa dibuka tanpa kunci tersebut.
 
+**Login cloud gagal — "Email atau password Hik-Connect salah"**
+Gunakan akun Hik-Connect (email yang dipakai di aplikasi resmi), bukan akun
+kamera/ISAPI. Bila muncul pesan CAPTCHA, login sekali di aplikasi Hik-Connect
+resmi lalu coba lagi. Akun dengan verifikasi dua langkah harus diselesaikan di
+aplikasi resmi terlebih dahulu.
+
+**Sinkron device cloud kosong**
+Pastikan device benar-benar terikat ke akun tersebut di aplikasi Hik-Connect
+(bukan hanya berada di jaringan yang sama). Coba **SINKRON ULANG**. Akun region
+berbeda tetap ditangani otomatis lewat `loginArea`.
+
+**Stream cloud tidak muncul / tile tetap gagal di luar rumah**
+Binding cloud tidak memutar video P2P; lihat batasan di bagian **Cloud
+Hik-Connect**. Isi **URL stream opsional** bila punya gateway/SDK, atau tetap
+pakai port forwarding/DDNS/VPN.
+
+**Foto cloud gagal di luar rumah**
+Cloud membatasi capture sekitar sekali per 10 menit per kanal dan menolak saat
+device offline. Gambar kamera dengan "Image and Video Encryption" juga tidak
+bisa didekripsi tanpa kode verifikasi, jadi aplikasi memakai fallback ISAPI bila
+tersedia.
+
 ## Struktur proyek
 
 ```
@@ -346,11 +454,15 @@ android-cctv/
 │     │  ├─ MainActivity.kt         grid 3×3, banner, menu
 │     │  ├─ FullscreenPlayerActivity.kt
 │     │  ├─ SettingsActivity.kt
+│     │  ├─ away/                   Mode Away: layanan latar + notifikasi
+│     │  ├─ cloud/                   Hik-Connect: login, sync, snapshot, relay
+│     │  │  └─ stream/               ysproto, ECDH/ChaCha20, demux, MediaCodec
 │     │  ├─ control/ControlRepository.kt   ISAPI + backup/verify/rollback
-│     │  ├─ data/                   AppPrefs, Camera, BackupStore, RemoteSettings
+│     │  ├─ data/                   AppPrefs, Camera, BackupStore, MediaSaver
+│     │  ├─ motion/                 sensor gerak + filter objek TFLite
 │     │  ├─ net/                    IsapiClient, DigestAuth, CameraXml, Endpoint, PublicIp
 │     │  ├─ player/PlayerManager.kt LibVLC + MediaPlayer per tile
-│     │  ├─ ui/                     bottom sheet kontrol, aspect ratio
+│     │  ├─ ui/                     bottom sheet kontrol, cloud, aspect ratio
 │     │  └─ work/                   RestoreScheduler, RestoreAllWorker
 │     └─ res/                       layout, drawable, menu, values
 └─ README.md
@@ -361,8 +473,11 @@ android-cctv/
 - Hanya untuk kamera Hikvision yang mendukung ISAPI dan RTSP.
 - Kontrol firewall tidak tersedia di Android.
 - RTSP OFF pada NVR sengaja diblokir.
-- Akses dari luar jaringan memerlukan port forwarding (alamat publik/DDNS
-  otomatis) atau VPN; aplikasi tidak membuka port sendiri dan tidak menyediakan
-  server relay. HTTP/RTSP tetap tidak terenkripsi.
+- Tanpa binding cloud, akses dari luar jaringan memerlukan port forwarding
+  (alamat publik/DDNS otomatis) atau VPN; aplikasi tidak membuka port sendiri.
+  HTTP/RTSP tetap tidak terenkripsi.
+- Live cloud memakai relay resmi Hik-Connect (`ysproto`, ECDH), bukan SDK
+  resmi. Perangkat dengan *Image and Video Encryption* tetap memerlukan kode
+  verifikasi; kontrol kamera tidak lewat relay.
 - Belum ada penyimpanan rekaman, PTZ, atau audio; fokus aplikasi adalah
   monitoring live dan kontrol status kamera.

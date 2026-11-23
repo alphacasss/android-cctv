@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import id.cctv.monitor.cloud.CloudDevice
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -18,6 +19,19 @@ class AppPrefs(context: Context) {
     private val prefs: SharedPreferences
     var encrypted: Boolean = true
         private set
+
+    /**
+     * Cache di memori. EncryptedSharedPreferences harus mendekripsi setiap
+     * pembacaan; tanpa cache, render grid memanggil puluhan pembacaan dan UI
+     * terasa lambat. Cache diperbarui setiap kali data ditulis.
+     */
+    @Volatile
+    private var camerasCache: MutableList<Camera>? = null
+
+    private val flagsCache = java.util.concurrent.ConcurrentHashMap<Int, CameraFlags>()
+
+    @Volatile
+    private var remoteSettingsCache: RemoteSettings? = null
 
     init {
         prefs = try {
@@ -49,6 +63,24 @@ class AppPrefs(context: Context) {
         get() = prefs.getBoolean(KEY_AUTO_RESTORE, true)
         set(value) = prefs.edit().putBoolean(KEY_AUTO_RESTORE, value).apply()
 
+    /** Pakai decoder/renderer resmi Hik-Connect untuk stream cloud. */
+    var useOfficialSdk: Boolean
+        get() = prefs.getBoolean(KEY_USE_OFFICIAL_SDK, true)
+        set(value) = prefs.edit().putBoolean(KEY_USE_OFFICIAL_SDK, value).apply()
+
+    /**
+     * Hentikan RTSP/VLC saat ponsel memakai paket data seluler.
+     * Selama mode ini aktif, tile yang sebelumnya memakai RTSP dialihkan ke
+     * Hik-Connect cloud. Kamera tanpa binding cloud berhenti dengan pesan,
+     * bukan terus mencoba RTSP lewat IP publik.
+     */
+    var blockRtspOnCellular: Boolean
+        get() = prefs.getBoolean(KEY_BLOCK_RTSP_CELLULAR, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_BLOCK_RTSP_CELLULAR, value).apply()
+            bumpConfig()
+        }
+
     /** Jeda sebelum pemulihan otomatis dijalankan saat aplikasi ditinggalkan. */
     var restoreDelaySeconds: Int
         get() = prefs.getInt(KEY_RESTORE_DELAY, 120).coerceIn(10, 3600)
@@ -58,37 +90,70 @@ class AppPrefs(context: Context) {
 
     var remoteAuto: Boolean
         get() = prefs.getBoolean(KEY_REMOTE_AUTO, true)
-        set(value) = prefs.edit().putBoolean(KEY_REMOTE_AUTO, value).apply()
+        set(value) {
+            prefs.edit().putBoolean(KEY_REMOTE_AUTO, value).apply()
+            remoteSettingsCache = null
+        }
 
     /** DDNS/alamat tetap opsional; kosong = pakai IP publik terdeteksi. */
     var remoteHost: String
         get() = prefs.getString(KEY_REMOTE_HOST, "").orEmpty()
-        set(value) = prefs.edit().putString(KEY_REMOTE_HOST, value.trim()).apply()
+        set(value) {
+            prefs.edit().putString(KEY_REMOTE_HOST, value.trim()).apply()
+            remoteSettingsCache = null
+        }
 
     var remoteHttpBase: Int
         get() = prefs.getInt(KEY_REMOTE_HTTP_BASE, RemoteSettings.DEFAULT_HTTP_BASE)
             .coerceIn(RemoteSettings.MIN_BASE, RemoteSettings.MAX_BASE)
-        set(value) = prefs.edit()
-            .putInt(
-                KEY_REMOTE_HTTP_BASE,
-                value.coerceIn(RemoteSettings.MIN_BASE, RemoteSettings.MAX_BASE)
-            )
-            .apply()
+        set(value) {
+            prefs.edit()
+                .putInt(
+                    KEY_REMOTE_HTTP_BASE,
+                    value.coerceIn(RemoteSettings.MIN_BASE, RemoteSettings.MAX_BASE)
+                )
+                .apply()
+            remoteSettingsCache = null
+        }
 
     var remoteRtspBase: Int
         get() = prefs.getInt(KEY_REMOTE_RTSP_BASE, RemoteSettings.DEFAULT_RTSP_BASE)
             .coerceIn(RemoteSettings.MIN_BASE, RemoteSettings.MAX_BASE)
-        set(value) = prefs.edit()
-            .putInt(
-                KEY_REMOTE_RTSP_BASE,
-                value.coerceIn(RemoteSettings.MIN_BASE, RemoteSettings.MAX_BASE)
-            )
-            .apply()
+        set(value) {
+            prefs.edit()
+                .putInt(
+                    KEY_REMOTE_RTSP_BASE,
+                    value.coerceIn(RemoteSettings.MIN_BASE, RemoteSettings.MAX_BASE)
+                )
+                .apply()
+            remoteSettingsCache = null
+        }
 
     /** Mode VPN vs port forwarding (default: port forwarding). */
     var vpnMode: Boolean
         get() = prefs.getBoolean(KEY_VPN_MODE, false)
-        set(value) = prefs.edit().putBoolean(KEY_VPN_MODE, value).apply()
+        set(value) {
+            prefs.edit().putBoolean(KEY_VPN_MODE, value).apply()
+            remoteSettingsCache = null
+        }
+
+    /** Mode Away: layanan latar memantau gerakan & mengirim notifikasi. */
+    var awayMode: Boolean
+        get() = prefs.getBoolean(KEY_AWAY_MODE, false)
+        set(value) = prefs.edit().putBoolean(KEY_AWAY_MODE, value).apply()
+
+    /** Waktu terakhir dialog saran Mode Away ditampilkan (anti-spam). */
+    var awayPromptAt: Long
+        get() = prefs.getLong(KEY_AWAY_PROMPT, 0L)
+        set(value) = prefs.edit().putLong(KEY_AWAY_PROMPT, value).apply()
+
+    /**
+     * Sensor gerak hanya menandai manusia/hewan/kendaraan (deteksi objek AI).
+     * Bila dimatikan, semua perubahan piksel dianggap gerakan.
+     */
+    var objectFilter: Boolean
+        get() = prefs.getBoolean(KEY_OBJECT_FILTER, true)
+        set(value) = prefs.edit().putBoolean(KEY_OBJECT_FILTER, value).apply()
 
     /**
      * IP publik **rumah** hasil deteksi saat ponsel berada di jaringan rumah.
@@ -125,13 +190,18 @@ class AppPrefs(context: Context) {
             .apply()
     }
 
-    fun remoteSettings(): RemoteSettings = RemoteSettings(
-        enabled = remoteAuto,
-        host = remoteHost,
-        httpBase = remoteHttpBase,
-        rtspBase = remoteRtspBase,
-        publicIp = publicIp
-    )
+    fun remoteSettings(): RemoteSettings {
+        remoteSettingsCache?.let { return it }
+        val settings = RemoteSettings(
+            enabled = remoteAuto,
+            host = remoteHost,
+            httpBase = remoteHttpBase,
+            rtspBase = remoteRtspBase,
+            publicIp = publicIp
+        )
+        remoteSettingsCache = settings
+        return settings
+    }
 
     val configRev: Int
         get() = prefs.getInt(KEY_CONFIG_REV, 0)
@@ -144,6 +214,11 @@ class AppPrefs(context: Context) {
         get() = prefs.getLong(KEY_LAST_RESTORE_AT, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_RESTORE_AT, value).apply()
 
+    /** Terakhir kalanya enkripsi stream NVR dimatikan lewat ISAPI lokal. */
+    var lastStreamEncryptionDisableAt: Long
+        get() = prefs.getLong(KEY_STREAM_ENCRYPTION_DISABLE_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_STREAM_ENCRYPTION_DISABLE_AT, value).apply()
+
     fun bumpConfig() {
         prefs.edit().putInt(KEY_CONFIG_REV, configRev + 1).apply()
     }
@@ -154,7 +229,37 @@ class AppPrefs(context: Context) {
     fun effectivePass(camera: Camera): String =
         camera.pass.ifBlank { defaultPass }
 
+    /**
+     * Kode verifikasi perangkat cloud (biasanya 6 huruf pada label NVR),
+     * disimpan per serial agar cukup diisi **sekali** dan otomatis dipakai
+     * semua kanal NVR tersebut.
+     */
+    fun cloudVerificationCode(serial: String): String {
+        if (serial.isBlank()) return ""
+        val raw = prefs.getString(KEY_CLOUD_CODES, null).orEmpty()
+        if (raw.isBlank()) return ""
+        return runCatching {
+            JSONObject(raw).optString(serial, "").trim()
+        }.getOrDefault("")
+    }
+
+    fun saveCloudVerificationCode(serial: String, code: String) {
+        if (serial.isBlank()) return
+        val raw = prefs.getString(KEY_CLOUD_CODES, null).orEmpty()
+        val obj = runCatching {
+            if (raw.isBlank()) JSONObject() else JSONObject(raw)
+        }.getOrDefault(JSONObject())
+        // Huruf besar/kecil penting: kunci AES memakai kode apa adanya.
+        obj.put(serial, code.trim())
+        prefs.edit().putString(KEY_CLOUD_CODES, obj.toString()).apply()
+        android.util.Log.d(
+            "AppPrefs",
+            "simpan kode serial='$serial' len=${code.trim().length}"
+        )
+    }
+
     fun cameras(): MutableList<Camera> {
+        camerasCache?.let { return it }
         val raw = prefs.getString(KEY_CAMERAS, null)
         if (raw.isNullOrBlank()) {
             val defaults = defaultCameras()
@@ -177,6 +282,29 @@ class AppPrefs(context: Context) {
                 val dayNight = runCatching {
                     DayNight.valueOf(o.optString("dayNight", DayNight.AUTO.name))
                 }.getOrDefault(DayNight.AUTO)
+                val cloudDevice = o.optJSONObject("cloudDevice")?.let { d ->
+                    CloudDevice(
+                        internalId = o.optInt("id", 0),
+                        cloudDeviceId = d.optString("cloudDeviceId", ""),
+                        serial = d.optString("serial", ""),
+                        channelSerial = d.optString("channelSerial", ""),
+                        name = d.optString("name", ""),
+                        channel = d.optInt("channel", 1),
+                        deviceType = d.optString("deviceType", ""),
+                        firmware = d.optString("firmware", ""),
+                        isNvr = d.optBoolean("isNvr", false),
+                        online = d.optBoolean("online", true),
+                        encrypted = d.optBoolean("encrypted", false),
+                        verificationCode = d.optString("verificationCode", ""),
+                        encryptionPwd = d.optString("encryptionPwd", ""),
+                        localIp = d.optString("localIp", ""),
+                        wanIp = d.optString("wanIp", ""),
+                        streamUrl = d.optString("streamUrl", ""),
+                        username = d.optString("username", ""),
+                        password = d.optString("password", ""),
+                        rtspPort = d.optInt("rtspPort", 554)
+                    )
+                }
                 list.add(
                     Camera(
                         id = o.getInt("id"),
@@ -191,12 +319,15 @@ class AppPrefs(context: Context) {
                         remoteHttpPort = remoteHttpPort,
                         remoteRtspPort = remoteRtspPort,
                         forceRemote = o.optBoolean("forceRemote", false),
-                        dayNight = DayNight.AUTO,
-                        movementDetect = o.optBoolean("movementDetect", true)
+                        dayNight = dayNight,
+                        movementDetect = o.optBoolean("movementDetect", true),
+                        cloudDevice = cloudDevice
                     )
                 )
             }
-            if (list.isEmpty()) defaultCameras() else list
+            val result = if (list.isEmpty()) defaultCameras() else list
+            camerasCache = result
+            result
         } catch (t: Throwable) {
             defaultCameras()
         }
@@ -225,12 +356,38 @@ class AppPrefs(context: Context) {
                     put("forceRemote", c.forceRemote)
                     put("dayNight", c.dayNight.name)
                     put("movementDetect", c.movementDetect)
+                    c.cloudDevice?.let { d ->
+                        put(
+                            "cloudDevice",
+                            JSONObject().apply {
+                                put("cloudDeviceId", d.cloudDeviceId)
+                                put("serial", d.serial)
+                                put("channelSerial", d.channelSerial)
+                                put("name", d.name)
+                                put("channel", d.channel)
+                                put("deviceType", d.deviceType)
+                                put("firmware", d.firmware)
+                                put("isNvr", d.isNvr)
+                                put("online", d.online)
+                                put("encrypted", d.encrypted)
+                                put("verificationCode", d.verificationCode)
+                                put("encryptionPwd", d.encryptionPwd)
+                                put("localIp", d.localIp)
+                                put("wanIp", d.wanIp)
+                                put("streamUrl", d.streamUrl)
+                                put("username", d.username)
+                                put("password", d.password)
+                                put("rtspPort", d.rtspPort)
+                            }
+                        )
+                    }
                 }
             )
         }
         val editor = prefs.edit().putString(KEY_CAMERAS, array.toString())
         if (bumpRevision) editor.putInt(KEY_CONFIG_REV, configRev + 1)
         editor.apply()
+        camerasCache = cameras.toMutableList()
     }
 
     private fun defaultCameras(): MutableList<Camera> {
@@ -253,19 +410,25 @@ class AppPrefs(context: Context) {
         return list
     }
 
-    fun flags(cameraId: Int): CameraFlags = CameraFlags(
-        black = prefs.getBoolean(keyFlag("black", cameraId), false),
-        streamOff = prefs.getBoolean(keyFlag("stream", cameraId), false),
-        rtspOff = prefs.getBoolean(keyFlag("rtsp", cameraId), false),
-        nvrOff = prefs.getBoolean(keyFlag("nvr", cameraId), false)
-    )
+    fun flags(cameraId: Int): CameraFlags =
+        flagsCache.getOrPut(cameraId) {
+            CameraFlags(
+                black = prefs.getBoolean(keyFlag("black", cameraId), false),
+                streamOff = prefs.getBoolean(keyFlag("stream", cameraId), false),
+                rtspOff = prefs.getBoolean(keyFlag("rtsp", cameraId), false),
+                nvrOff = prefs.getBoolean(keyFlag("nvr", cameraId), false),
+                nightBoost = prefs.getBoolean(keyFlag("boost", cameraId), false)
+            )
+        }
 
     fun setFlags(cameraId: Int, flags: CameraFlags) {
+        flagsCache[cameraId] = flags
         prefs.edit()
             .putBoolean(keyFlag("black", cameraId), flags.black)
             .putBoolean(keyFlag("stream", cameraId), flags.streamOff)
             .putBoolean(keyFlag("rtsp", cameraId), flags.rtspOff)
             .putBoolean(keyFlag("nvr", cameraId), flags.nvrOff)
+            .putBoolean(keyFlag("boost", cameraId), flags.nightBoost)
             .apply()
     }
 
@@ -284,11 +447,16 @@ class AppPrefs(context: Context) {
         private const val KEY_USER = "default_user"
         private const val KEY_PASS = "default_pass"
         private const val KEY_CAMERAS = "cameras_json"
+        private const val KEY_CLOUD_CODES = "cloud_verification_codes"
         private const val KEY_CONFIG_REV = "config_rev"
         private const val KEY_AUTO_RESTORE = "auto_restore"
+        private const val KEY_AWAY_MODE = "away_mode"
+        private const val KEY_AWAY_PROMPT = "away_prompt_at"
+        private const val KEY_OBJECT_FILTER = "object_filter"
         private const val KEY_RESTORE_DELAY = "restore_delay"
         private const val KEY_LAST_RESTORE = "last_restore_summary"
         private const val KEY_LAST_RESTORE_AT = "last_restore_at"
+        private const val KEY_STREAM_ENCRYPTION_DISABLE_AT = "stream_encryption_disable_at"
         private const val KEY_REMOTE_AUTO = "remote_auto"
         private const val KEY_REMOTE_HOST = "remote_host"
         private const val KEY_REMOTE_HTTP_BASE = "remote_http_base"
@@ -297,6 +465,8 @@ class AppPrefs(context: Context) {
         private const val KEY_PUBLIC_IP_AT = "public_ip_at"
         private const val KEY_PUBLIC_IP_HOME = "public_ip_home"
         private const val KEY_VPN_MODE = "vpn_mode"
+        private const val KEY_USE_OFFICIAL_SDK = "use_official_sdk"
+        private const val KEY_BLOCK_RTSP_CELLULAR = "block_rtsp_cellular"
         private const val KEY_DAYNIGHT = "day_night"
     }
 

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Cloud SDK resmi Hik-Connect"
+        android:textColor="@color/text"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <SurfaceView
+        android:id="@+id/sdkSurface"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="10dp"
+        android:layout_weight="1" />
+
+    <TextView
+        android:id="@+id/sdkStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="Menyiapkan…"
+        android:textColor="@color/text"
+        android:textSize="12sp" />
+</LinearLayout>

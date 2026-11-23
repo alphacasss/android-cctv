@@ -196,6 +196,53 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Mode Away: pantau gerakan & kirim notifikasi saat di luar rumah -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                app:cardBackgroundColor="@color/surface"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/stroke"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Mode Away"
+                        android:textColor="@color/text"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvAwayStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:lineSpacingExtra="2dp"
+                        android:text="Nonaktif. Aktifkan saat meninggalkan rumah: aplikasi memantau gerakan kamera dan mengirim notifikasi berisi foto."
+                        android:textColor="@color/muted"
+                        android:textSize="12sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnAway"
+                        style="@style/Widget.Material3.Button"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="AKTIFKAN MODE AWAY"
+                        android:textColor="@color/black"
+                        app:backgroundTint="@color/accent" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Aksi bulk: matikan / nyalakan semua kamera sekaligus -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"

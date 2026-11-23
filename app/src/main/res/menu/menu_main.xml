@@ -10,6 +10,13 @@
         app:titleTextColor="@color/bottom_nav_color" />
 
     <item
+        android:id="@+id/nav_sdk"
+        android:icon="@drawable/ic_camera"
+        android:title="SDK"
+        app:iconTint="@color/bottom_nav_color"
+        app:titleTextColor="@color/bottom_nav_color" />
+
+    <item
         android:id="@+id/nav_history"
         android:icon="@drawable/ic_refresh"
         android:title="Riwayat"

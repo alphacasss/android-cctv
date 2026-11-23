@@ -1,6 +1,7 @@
 package id.cctv.monitor.data
 
 import java.net.URLEncoder
+import id.cctv.monitor.cloud.CloudDevice
 
 /**
  * Satu entri kamera. [user]/[pass] kosong berarti memakai kredensial default
@@ -29,7 +30,10 @@ data class Camera(
     /** Selalu pakai [remoteHost] walau ponsel sedang berada di LAN. */
     var forceRemote: Boolean = false,
     var dayNight: DayNight = DayNight.AUTO,
-    var movementDetect: Boolean = true
+    var movementDetect: Boolean = true,
+    /** Kamera terikat ke akun cloud Hik-Connect. Bila diisi, stream dari
+     * [cloudDevice.streamUrl] dipakai (remote tanpa port forwarding). */
+    var cloudDevice: CloudDevice? = null,
 ) {
     val displayName: String
         get() = if (name.isBlank()) "CAM-%02d".format(id) else name
@@ -59,7 +63,9 @@ data class CameraFlags(
     val black: Boolean = false,
     val streamOff: Boolean = false,
     val rtspOff: Boolean = false,
-    val nvrOff: Boolean = false
+    val nvrOff: Boolean = false,
+    /** Pencerahan gambar di sisi aplikasi (pengganti IR bila kamera tidak punya IR). */
+    val nightBoost: Boolean = false
 ) {
     val blocked: Boolean get() = streamOff || rtspOff || nvrOff
     val any: Boolean get() = black || blocked

@@ -7,7 +7,12 @@ enum class BackupKind(val prefix: String) {
     PRIVACY("privmask"),
     STREAM("stream"),
     RTSP("rtsp"),
-    NVR("nvr")
+    /** Streaming channel 101 (main) pada kanal NVR. */
+    NVR("nvr"),
+    /** Streaming channel 102 (sub) pada kanal NVR. */
+    NVR_SUB("nvrsub"),
+    /** Konfigurasi InputProxy kanal NVR sebelum IP sumber diganti dummy. */
+    INPUT_PROXY("inputproxy")
 }
 
 /** Backup XML asli kamera, disimpan di penyimpanan internal aplikasi. */

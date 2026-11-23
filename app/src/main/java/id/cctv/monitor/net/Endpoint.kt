@@ -43,7 +43,7 @@ data class Endpoint(
  */
 object EndpointResolver {
 
-    private const val CACHE_MS = 5_000L
+    private const val CACHE_MS = 60_000L
 
     @Volatile
     private var cachedPrefixes: List<Pair<Long, Int>> = emptyList()
@@ -87,7 +87,9 @@ object EndpointResolver {
         )
     }
 
-    /** True bila ada antarmuka aktif yang satu subnet dengan [ip]. */
+    /**
+     * True bila ada antarmuka aktif yang satu subnet dengan [ip].
+     */
     fun isLocalSubnet(ip: String): Boolean {
         val target = ipv4ToLong(ip) ?: return false
         return localPrefixes().any { (network, prefix) ->

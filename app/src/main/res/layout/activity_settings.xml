@@ -114,6 +114,24 @@
                         android:layout_marginTop="8dp"
                         android:textColor="@color/muted"
                         android:textSize="11sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnDisableStreamEncryption"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="Matikan enkripsi stream (Wi-Fi rumah)"
+                        android:textColor="@color/black"
+                        app:backgroundTint="@color/accent" />
+
+                    <TextView
+                        android:id="@+id/tvStreamEncryptionInfo"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Diperlukan agar live cloud tidak hijau. Hubungkan ke Wi-Fi rumah dulu."
+                        android:textColor="@color/muted"
+                        android:textSize="11sp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -213,6 +231,31 @@
                         android:layout_marginTop="12dp"
                         android:text="Aktifkan otomatis saat di luar jaringan"
                         android:textColor="@color/text" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switchOfficialSdk"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Pakai decoder resmi Hik-Connect (disarankan)"
+                        android:textColor="@color/text" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switchBlockRtspCellular"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Blokir RTSP saat paket data seluler"
+                        android:textColor="@color/text" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginTop="2dp"
+                        android:text="Saat paket data aktif, stream otomatis memakai Hik-Connect cloud. RTSP/VLC dimatikan."
+                        android:textColor="@color/muted"
+                        android:textSize="11sp" />
 
                     <TextView
                         android:id="@+id/tvRemoteInfo"
@@ -395,6 +438,49 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
                         android:lineSpacingExtra="2dp"
+                        android:textColor="@color/muted"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Section: Sensor Gerak Cerdas -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                app:cardBackgroundColor="@color/surface"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/stroke"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Sensor Gerak Cerdas"
+                        android:textColor="@color/text"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switchObjectFilter"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="Hanya manusia, hewan, kendaraan"
+                        android:textColor="@color/text" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Model AI berjalan di ponsel. Perubahan piksel dari pohon, bayangan, atau lampu diabaikan. Matikan bila kamera sering terlewat (mis. objek sangat jauh atau malam gelap)."
                         android:textColor="@color/muted"
                         android:textSize="11sp" />
                 </LinearLayout>

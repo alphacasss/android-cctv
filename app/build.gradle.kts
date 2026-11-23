@@ -79,6 +79,11 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+
+    // Model TFLite harus tidak dikompresi agar bisa di-mmap langsung.
+    androidResources {
+        noCompress += "tflite"
+    }
 }
 
 dependencies {
@@ -94,4 +99,6 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.videolan.android:libvlc-all:3.7.7")
+    // Deteksi objek di perangkat (manusia/hewan/kendaraan) untuk filter sensor gerak.
+    implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
 }

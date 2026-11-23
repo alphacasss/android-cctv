@@ -87,6 +87,26 @@
             android:textSize="12sp" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnMotionTest"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="TES SENSOR GERAK (2 SNAPSHOT)"
+            android:textColor="@color/accent" />
+
+        <TextView
+            android:id="@+id/tvMotionTestResult"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:background="@drawable/bg_chip"
+            android:padding="10dp"
+            android:textColor="@color/text_dim"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStream"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
@@ -114,6 +134,85 @@
             android:text="@string/day_night_note"
             android:textColor="@color/muted"
             android:textSize="12sp" />
+
+        <!-- Pengganti IR: pencerahan gambar di aplikasi + foto/rekaman -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnNightBoost"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="NIGHT BOOST (tanpa IR)"
+            android:textSize="14sp"
+            app:strokeColor="@color/stroke" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSnapshot"
+                style="@style/Widget.Material3.Button"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:text="FOTO"
+                android:textColor="@color/black"
+                app:backgroundTint="@color/accent" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRecord"
+                style="@style/Widget.Material3.Button"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
+                android:text="REKAM"
+                android:textColor="@color/black"
+                app:backgroundTint="@color/status_info" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvNightNote"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Kamera tanpa IR: NIGHT BOOST mencerahkan gambar dari aplikasi. FOTO menyimpan snapshot ke galeri; REKAM menyimpan klip .ts (putar dengan VLC)."
+            android:textColor="@color/muted"
+            android:textSize="12sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnLed"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="LAMPU PUTIH: ON / OFF"
+            android:textSize="14sp"
+            app:strokeColor="@color/stroke" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnProbe"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="CEK KEMAMPUAN KAMERA (ISAPI)"
+            android:textColor="@color/accent" />
+
+        <TextView
+            android:id="@+id/tvProbeResult"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/bg_chip"
+            android:padding="10dp"
+            android:textColor="@color/text_dim"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnNvr"
@@ -156,5 +255,15 @@
             android:text="Pilih tindakan untuk kamera ini."
             android:textColor="@color/accent"
             android:textSize="12sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnBindCloud"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="BIND KE CLOUD (Hik-Connect)"
+            android:textColor="@color/accent"
+            app:backgroundTint="@color/accent" />
     </LinearLayout>
 </ScrollView>

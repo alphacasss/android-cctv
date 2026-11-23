@@ -22,9 +22,13 @@ import id.cctv.monitor.data.BackupStore
 import id.cctv.monitor.data.Camera
 import id.cctv.monitor.data.RemoteSettings
 import id.cctv.monitor.net.EndpointResolver
+import id.cctv.monitor.net.IsapiClient
 import id.cctv.monitor.net.PublicIp
+import id.cctv.monitor.net.isapiError
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -42,6 +46,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var containerCameras: LinearLayout
     private lateinit var tvRestoreInfo: TextView
     private lateinit var tvEncryption: TextView
+    private lateinit var tvStreamEncryptionInfo: TextView
+    private lateinit var btnDisableStreamEncryption: MaterialButton
     private lateinit var btnRestoreAllNow: MaterialButton
     private lateinit var etRemoteHostGlobal: TextInputEditText
     private lateinit var etRemoteHttpBase: TextInputEditText
@@ -53,6 +59,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var tvRemotePreview: TextView
     private lateinit var btnRefreshIp: MaterialButton
     private lateinit var switchRemoteAuto: MaterialSwitch
+    private lateinit var switchOfficialSdk: MaterialSwitch
+    private lateinit var switchBlockRtspCellular: MaterialSwitch
     private lateinit var tvRemoteIp: TextView
     private lateinit var tvRemoteIpUpdated: TextView
     private lateinit var tvRemotePortInfo: TextView
@@ -67,7 +75,7 @@ class SettingsActivity : AppCompatActivity() {
         val app = application as CctvApp
         prefs = app.prefs
         store = app.store
-        repository = ControlRepository(prefs, store)
+        repository = ControlRepository(prefs, store, app.cloudRepo, app.cloudAuth)
 
         setContentView(R.layout.activity_settings)
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbarSettings)
@@ -81,6 +89,8 @@ class SettingsActivity : AppCompatActivity() {
         containerCameras = findViewById(R.id.containerCameras)
         tvRestoreInfo = findViewById(R.id.tvRestoreInfo)
         tvEncryption = findViewById(R.id.tvEncryption)
+        tvStreamEncryptionInfo = findViewById(R.id.tvStreamEncryptionInfo)
+        btnDisableStreamEncryption = findViewById(R.id.btnDisableStreamEncryption)
         btnRestoreAllNow = findViewById(R.id.btnRestoreAllNow)
         etRemoteHostGlobal = findViewById(R.id.etRemoteHostGlobal)
         etRemoteHttpBase = findViewById(R.id.etRemoteHttpBase)
@@ -99,6 +109,8 @@ class SettingsActivity : AppCompatActivity() {
         tvRemoteVpnInfo = findViewById(R.id.tvRemoteVpnInfo)
         tvRemoteNotice = findViewById(R.id.tvRemoteNotice)
         switchRemoteAuto = findViewById(R.id.switchRemoteAuto)
+        switchOfficialSdk = findViewById(R.id.switchOfficialSdk)
+        switchBlockRtspCellular = findViewById(R.id.switchBlockRtspCellular)
 
         findViewById<MaterialButton>(R.id.btnSaveCred).setOnClickListener { saveCredentials() }
         findViewById<MaterialButton>(R.id.btnSaveRestore).setOnClickListener { saveRestoreSettings() }
@@ -109,6 +121,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         findViewById<MaterialButton>(R.id.btnAddCamera).setOnClickListener { addCamera() }
         btnRefreshIp.setOnClickListener { refreshPublicIp(force = true) }
+        btnDisableStreamEncryption.setOnClickListener { disableStreamEncryption() }
         btnRestoreAllNow.setOnClickListener { confirmRestoreAll() }
 
         switchAutoRestore.setOnCheckedChangeListener { _, checked ->
@@ -120,6 +133,28 @@ class SettingsActivity : AppCompatActivity() {
             updateRemoteVpnInfo()
             renderCameras()
         }
+
+        switchOfficialSdk.setOnCheckedChangeListener { _, checked ->
+            prefs.useOfficialSdk = checked
+            Toast.makeText(
+                this,
+                "Jalur stream cloud akan dipakai saat pemutaran berikutnya.",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        switchBlockRtspCellular.setOnCheckedChangeListener { _, checked ->
+            prefs.blockRtspOnCellular = checked
+            Toast.makeText(
+                this,
+                if (checked) {
+                    "RTSP akan dihentikan saat paket data seluler aktif."
+                } else {
+                    "RTSP boleh dipakai kembali saat paket data seluler aktif."
+                },
+                Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 
     override fun onResume() {
@@ -130,6 +165,8 @@ class SettingsActivity : AppCompatActivity() {
         etRestoreDelay.isEnabled = prefs.autoRestore
         etRestoreDelay.setText(prefs.restoreDelaySeconds.toString())
         switchRemoteAuto.isChecked = prefs.remoteAuto
+        switchOfficialSdk.isChecked = prefs.useOfficialSdk
+        switchBlockRtspCellular.isChecked = prefs.blockRtspOnCellular
         etRemoteHostGlobal.setText(prefs.remoteHost)
         etRemoteHttpBase.setText(prefs.remoteHttpBase.toString())
         etRemoteRtspBase.setText(prefs.remoteRtspBase.toString())
@@ -159,6 +196,65 @@ class SettingsActivity : AppCompatActivity() {
         prefs.defaultPass = etPass.text?.toString().orEmpty()
         prefs.bumpConfig()
         Toast.makeText(this, "Kredensial default disimpan.", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Matikan "stream encryption" di NVR lewat ISAPI lokal. Setelah ini cloud
+     * mengirim video jernih, sehingga dekode green/corrupt tidak terjadi lagi.
+     * Kredensial kamera tetap dibaca dari Setelan, tidak ditulis ke source.
+     */
+    private fun disableStreamEncryption() {
+        val nvr = prefs.cameras().firstOrNull { it.isNvr }
+            ?: prefs.cameras().firstOrNull()
+        if (nvr == null) {
+            Toast.makeText(this, "Belum ada kamera/NVR yang dikonfigurasi.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val user = nvr.user.ifBlank { prefs.defaultUser }
+        val pass = nvr.pass.ifBlank { prefs.defaultPass }
+        if (user.isBlank()) {
+            Toast.makeText(this, "Isi username kamera/NVR dulu.", Toast.LENGTH_LONG).show()
+            return
+        }
+        btnDisableStreamEncryption.isEnabled = false
+        tvStreamEncryptionInfo.text = "Menanyakan konfigurasi enkripsi ke ${nvr.ip}…"
+        lifecycleScope.launch {
+            val message = withContext(Dispatchers.IO) {
+                runCatching {
+                    val client = IsapiClient("http://${nvr.ip}", user, pass)
+                    val path = "/ISAPI/System/Network/EZVIZ"
+                    val current = client.get(path)
+                    if (current.code !in 200..299) return@runCatching isapiError(current)
+                    if (!current.body.contains("streamEncrypteEnabled", ignoreCase = true)) {
+                        return@runCatching "Perangkat tidak menyediakan opsi enkripsi stream."
+                    }
+                    val enabled = Regex(
+                        "<streamEncrypteEnabled>\\s*true\\s*</streamEncrypteEnabled>",
+                        RegexOption.IGNORE_CASE
+                    ).containsMatchIn(current.body)
+                    if (!enabled) return@runCatching "Enkripsi stream sudah nonaktif."
+                    val updated = current.body.replace(
+                        Regex(
+                            "<streamEncrypteEnabled>\\s*true\\s*</streamEncrypteEnabled>",
+                            RegexOption.IGNORE_CASE
+                        ),
+                        "<streamEncrypteEnabled>false</streamEncrypteEnabled>"
+                    )
+                    val put = client.put(path, updated)
+                    if (put.code in 200..299) {
+                        "Enkripsi stream dimatikan. Live cloud sekarang akan jernih."
+                    } else {
+                        isapiError(put)
+                    }
+                }.getOrElse { "Gagal: ${it.message ?: it::class.java.simpleName}" }
+            }
+            if (!isFinishing && !isDestroyed) {
+                btnDisableStreamEncryption.isEnabled = true
+                tvStreamEncryptionInfo.text = message
+                Toast.makeText(this@SettingsActivity, message, Toast.LENGTH_LONG).show()
+                prefs.bumpConfig()
+            }
+        }
     }
 
     private fun saveRestoreSettings() {
@@ -475,6 +571,12 @@ class SettingsActivity : AppCompatActivity() {
         val switchForceRemote = view.findViewById<MaterialSwitch>(R.id.switchCamForceRemote)
         val switchNvr = view.findViewById<MaterialSwitch>(R.id.switchCamNvr)
         val switchEnabled = view.findViewById<MaterialSwitch>(R.id.switchCamEnabled)
+        val tilRemoteHost = view.findViewById<TextInputLayout>(R.id.tilCamRemoteHost)
+        val tilRemoteHttp = view.findViewById<TextInputLayout>(R.id.tilCamRemoteHttp)
+        val tilRemoteRtsp = view.findViewById<TextInputLayout>(R.id.tilCamRemoteRtsp)
+        val etRemoteHost = view.findViewById<TextInputEditText>(R.id.etCamRemoteHost)
+        val etRemoteHttp = view.findViewById<TextInputEditText>(R.id.etCamRemoteHttp)
+        val etRemoteRtsp = view.findViewById<TextInputEditText>(R.id.etCamRemoteRtsp)
         val progress = view.findViewById<ProgressBar>(R.id.progressTest)
         val tvTest = view.findViewById<TextView>(R.id.tvTestResult)
 
@@ -483,6 +585,9 @@ class SettingsActivity : AppCompatActivity() {
         etChannel.setText(camera.channel.toString())
         etCamUser.setText(camera.user)
         etCamPass.setText(camera.pass)
+        etRemoteHost.setText(camera.remoteHost)
+        etRemoteHttp.setText(camera.remoteHttpPort.takeIf { it in 1..65535 }?.toString().orEmpty())
+        etRemoteRtsp.setText(camera.remoteRtspPort.takeIf { it in 1..65535 }?.toString().orEmpty())
         switchNvr.isChecked = camera.isNvr
         switchEnabled.isChecked = camera.enabled
         switchForceRemote.isChecked = camera.forceRemote
@@ -505,14 +610,34 @@ class SettingsActivity : AppCompatActivity() {
                 val ip = etIp.text?.toString()?.trim().orEmpty()
                 val channel = etChannel.text?.toString()?.trim()?.toIntOrNull()
                 val forceRemote = switchForceRemote.isChecked
+                val remoteHost = EndpointResolver.normalizeHost(
+                    etRemoteHost.text?.toString().orEmpty()
+                )
+                val remoteHttpPort = parsePort(etRemoteHttp.text?.toString(), 0)
+                val remoteRtspPort = parsePort(etRemoteRtsp.text?.toString(), 0)
                 etIp.error = null
                 etChannel.error = null
+                tilRemoteHost.error = null
+                tilRemoteHttp.error = null
+                tilRemoteRtsp.error = null
                 if (!validIp(ip)) {
                     if (validate) etIp.error = "Alamat IPv4 tidak valid."
                     return@read null
                 }
                 if (channel == null || channel !in 1..64) {
                     if (validate) etChannel.error = "Kanal 1–64."
+                    return@read null
+                }
+                if (remoteHost.isNotEmpty() && !EndpointResolver.isValidHost(remoteHost)) {
+                    if (validate) tilRemoteHost.error = "Alamat/IP/DDNS tidak valid."
+                    return@read null
+                }
+                if (remoteHttpPort == null) {
+                    if (validate) tilRemoteHttp.error = "Port 0–65535."
+                    return@read null
+                }
+                if (remoteRtspPort == null) {
+                    if (validate) tilRemoteRtsp.error = "Port 0–65535."
                     return@read null
                 }
 
@@ -524,9 +649,9 @@ class SettingsActivity : AppCompatActivity() {
                     enabled = switchEnabled.isChecked,
                     user = etCamUser.text?.toString()?.trim().orEmpty(),
                     pass = etCamPass.text?.toString().orEmpty(),
-                    remoteHost = camera.remoteHost,
-                    remoteHttpPort = camera.remoteHttpPort,
-                    remoteRtspPort = camera.remoteRtspPort,
+                    remoteHost = remoteHost,
+                    remoteHttpPort = remoteHttpPort,
+                    remoteRtspPort = remoteRtspPort,
                     forceRemote = forceRemote
                 )
             }

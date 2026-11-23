@@ -14,6 +14,12 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <SurfaceView
+        android:id="@+id/cloudSurface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <View
         android:id="@+id/nightLayer"
         android:layout_width="match_parent"
@@ -29,6 +35,41 @@
         android:textColor="@color/text"
         android:textSize="14sp"
         android:visibility="gone" />
+
+    <!-- Indikator sensor gerak + badge GERAK langsung di tampilan kamera -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="4dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tvSensorChip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_badge_sensor"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:text="SENSOR ON"
+            android:textColor="@color/accent"
+            android:textSize="8sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvMotionBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/bg_badge_motion"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:text="GERAK"
+            android:textColor="@color/black"
+            android:textSize="8sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"

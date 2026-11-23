@@ -20,14 +20,31 @@ data class IsapiResponse(val code: Int, val body: String)
 class IsapiClient(
     private val baseUrl: String,
     private val user: String,
-    private val pass: String
+    private val pass: String,
+    private val connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
+    private val readTimeoutMs: Int = READ_TIMEOUT_MS
 ) {
 
-    fun get(path: String): IsapiResponse = request("GET", path, null)
+    fun get(path: String): IsapiResponse {
+        val (code, bytes) = request("GET", path, null)
+        return IsapiResponse(code, bytes.toString(Charsets.UTF_8))
+    }
 
-    fun put(path: String, body: String): IsapiResponse = request("PUT", path, body)
+    fun put(path: String, body: String): IsapiResponse {
+        val (code, bytes) = request("PUT", path, body)
+        return IsapiResponse(code, bytes.toString(Charsets.UTF_8))
+    }
 
-    private fun request(method: String, path: String, body: String?): IsapiResponse {
+    /** GET biner (mis. snapshot JPEG). Null bila respons bukan 2xx. */
+    fun getBytes(path: String): ByteArray? {
+        val (code, bytes) = request("GET", path, null)
+        return if (code in 200..299 && bytes.isNotEmpty()) bytes else null
+    }
+
+    /** GET biner beserta status HTTP, untuk diagnosa snapshot. */
+    fun getBinary(path: String): Pair<Int, ByteArray> = request("GET", path, null)
+
+    private fun request(method: String, path: String, body: String?): Pair<Int, ByteArray> {
         var auth: String? = null
         var attempt = 0
         while (attempt < 2) {
@@ -39,8 +56,8 @@ class IsapiClient(
             }
             try {
                 conn.requestMethod = method
-                conn.connectTimeout = CONNECT_TIMEOUT_MS
-                conn.readTimeout = READ_TIMEOUT_MS
+                conn.connectTimeout = connectTimeoutMs
+                conn.readTimeout = readTimeoutMs
                 conn.instanceFollowRedirects = false
                 conn.useCaches = false
                 conn.setRequestProperty("User-Agent", "CCTV-Monitor-Android/1.0")
@@ -57,7 +74,7 @@ class IsapiClient(
 
                 val code = conn.responseCode
                 val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-                val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                val bytes = stream?.use { it.readBytes() } ?: ByteArray(0)
 
                 if (code == 401 && auth == null) {
                     val challenge = conn.getHeaderField("WWW-Authenticate")
@@ -79,7 +96,7 @@ class IsapiClient(
                         401
                     )
                 }
-                return IsapiResponse(code, text)
+                return code to bytes
             } catch (e: IsapiException) {
                 throw e
             } catch (e: Exception) {

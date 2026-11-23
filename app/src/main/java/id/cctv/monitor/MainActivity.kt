@@ -1,15 +1,26 @@
 package id.cctv.monitor
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.ColorStateList
+import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.doOnLayout
 import android.widget.GridLayout
 import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
@@ -17,6 +28,9 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import id.cctv.monitor.away.AwayService
+import id.cctv.monitor.cloud.CloudCameraImporter
+import id.cctv.monitor.cloud.StreamEncryptionManager
 import id.cctv.monitor.control.ControlRepository
 import id.cctv.monitor.control.RestoreReport
 import id.cctv.monitor.control.BulkResult
@@ -26,10 +40,14 @@ import id.cctv.monitor.data.Camera
 import id.cctv.monitor.data.CameraFlags
 import id.cctv.monitor.data.DayNight
 import id.cctv.monitor.data.RemoteSettings
+import id.cctv.monitor.motion.MotionMonitor
+import id.cctv.monitor.motion.ObjectFilter
 import id.cctv.monitor.net.EndpointResolver
+import id.cctv.monitor.net.NetworkType
 import id.cctv.monitor.net.PublicIp
 import id.cctv.monitor.player.PlayerManager
 import id.cctv.monitor.ui.CameraControlSheet
+import id.cctv.monitor.ui.CloudBindingSheet
 import kotlinx.coroutines.launch
 import org.videolan.libvlc.util.VLCVideoLayout
 
@@ -41,6 +59,8 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
 
     private lateinit var pagerCameras: ViewPager2
     private lateinit var tvPageIndicator: TextView
+    private lateinit var tvStatusSubtitle: TextView
+    private lateinit var tvTotalCameras: TextView
     private lateinit var banner: View
     private lateinit var bannerText: TextView
     private lateinit var bannerProgress: ProgressBar
@@ -48,35 +68,81 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
     private lateinit var btnTurnOffAll: MaterialButton
     private lateinit var btnTurnOnAll: MaterialButton
     private lateinit var btnTurnOffAllRtsp: MaterialButton
+    private lateinit var btnAway: MaterialButton
+    private lateinit var tvAwayStatus: TextView
 
     private var playerManager: PlayerManager? = null
     private val tiles = LinkedHashMap<Int, Tile>()
     private var camerasById: Map<Int, Camera> = emptyMap()
     private val playerStates = HashMap<Int, PlayerManager.State>()
+    private val playerMessages = HashMap<Int, String?>()
     private var lastConfigRev = -1
     private var restoring = false
     private var remoteSettings = RemoteSettings()
     private var ipChangedRegistered = false
 
     private companion object {
-        const val CAMERAS_PER_PAGE = 6
+        const val CAMERAS_PER_PAGE = 4
+        const val GRID_COLUMNS = 2
+        const val REQ_NOTIF = 9001
     }
 
     private data class Tile(
         val root: View,
         val video: VLCVideoLayout,
+        val cloudSurface: android.view.SurfaceView,
         val name: TextView,
         val status: TextView,
         val overlay: TextView,
-        val menu: ImageButton
+        val menu: ImageButton,
+        val sensorChip: TextView,
+        val motionBadge: TextView
     )
+
+    private var cameraPages: List<List<Camera>> = emptyList()
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val pageStartToken = Any()
+    private var startGeneration = 0
+
+    private lateinit var motionMonitor: MotionMonitor
+    private val motionActive = HashSet<Int>()
+    private val motionLabels = HashMap<Int, String>()
+    private val motionSnapshotOk = HashMap<Int, Boolean>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as CctvApp
         prefs = app.prefs
         store = app.store
-        repository = ControlRepository(prefs, store)
+        repository = ControlRepository(prefs, store, app.cloudRepo, app.cloudAuth)
+
+        motionMonitor = MotionMonitor(
+            prefs,
+            lifecycleScope,
+            object : MotionMonitor.Listener {
+                override fun onMotion(cameraId: Int, active: Boolean, label: String?) {
+                    if (active) {
+                        motionActive.add(cameraId)
+                        if (label != null) motionLabels[cameraId] = label else motionLabels.remove(cameraId)
+                    } else {
+                        motionActive.remove(cameraId)
+                        motionLabels.remove(cameraId)
+                    }
+                    camerasById[cameraId]?.let { render(it, prefs.flags(cameraId)) }
+                }
+
+                override fun onSnapshotStatus(cameraId: Int, ok: Boolean) {
+                    motionSnapshotOk[cameraId] = ok
+                    camerasById[cameraId]?.let { render(it, prefs.flags(cameraId)) }
+                }
+            },
+            intervalMs = 4_000L,
+            // Deteksi gerakan sisi aplikasi berjalan di semua kamera yang terlihat,
+            // tidak bergantung pada sensor bawaan kamera.
+            onlyMotionEnabled = false,
+            // Hanya manusia/hewan/kendaraan yang dianggap gerakan.
+            objectFilter = if (app.prefs.objectFilter) ObjectFilter(this) else null
+        )
 
         setContentView(R.layout.activity_main)
 
@@ -90,13 +156,22 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
                     startActivity(Intent(this, SettingsActivity::class.java))
                     true
                 }
-                R.id.nav_history -> true
+                R.id.nav_sdk -> {
+                    startActivity(Intent(this, OfficialSdkActivity::class.java))
+                    true
+                }
+                R.id.nav_history -> {
+                    startActivity(Intent(this, HistoryActivity::class.java))
+                    true
+                }
                 else -> false
             }
         }
 
         pagerCameras = findViewById(R.id.pagerCameras)
         tvPageIndicator = findViewById(R.id.tvPageIndicator)
+        tvStatusSubtitle = findViewById(R.id.tvStatusSubtitle)
+        tvTotalCameras = findViewById(R.id.tvTotalCameras)
         banner = findViewById(R.id.bannerRestore)
         bannerText = findViewById(R.id.tvRestoreText)
         bannerProgress = findViewById(R.id.progressRestore)
@@ -110,10 +185,18 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         btnTurnOffAllRtsp = findViewById(R.id.btnTurnOffAllRtsp)
         btnTurnOffAllRtsp.setOnClickListener { confirmTurnOffAllRtsp() }
 
-        pagerCameras.offscreenPageLimit = 1
+        btnAway = findViewById(R.id.btnAway)
+        tvAwayStatus = findViewById(R.id.tvAwayStatus)
+        btnAway.setOnClickListener { toggleAway() }
+        updateAwayUi()
+
+        pagerCameras.offscreenPageLimit = ViewPager2.OFFSCREEN_PAGE_LIMIT_DEFAULT
         pagerCameras.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 updatePageIndicator(position)
+                // Ringankan RAM/CPU: putar hanya kamera di halaman yang terlihat.
+                startVisiblePage(position)
+                motionMonitor.updateCameras(cameraPages.getOrNull(position).orEmpty())
             }
         })
 
@@ -126,6 +209,17 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             if (id > 0) onCameraChanged(id, refresh)
             updateBanner()
         }
+
+        // Hasil impor otomatis kanal cloud: muat ulang grid tanpa menunggu
+        // pengguna membuka sheet BIND.
+        supportFragmentManager.setFragmentResultListener(
+            CloudBindingSheet.REQUEST_KEY,
+            this
+        ) { _, bundle ->
+            if (!bundle.getBoolean(CloudBindingSheet.KEY_REFRESH, false)) return@setFragmentResultListener
+            applyConfigIfNeeded()
+            startAllCameras()
+        }
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -135,6 +229,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
                 true
             }
             R.id.nav_history -> {
+                startActivity(Intent(this, HistoryActivity::class.java))
                 true
             }
             else -> false
@@ -146,6 +241,14 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         try {
             applyConfigIfNeeded()
             startAllCameras()
+            refreshLanCodeIfNeeded()
+            lifecycleScope.launch { StreamEncryptionManager.disableIfOnLan(prefs) }
+            syncCloudIfNeeded()
+            motionMonitor.updateCameras(cameraPages.getOrNull(pagerCameras.currentItem).orEmpty())
+            motionMonitor.start()
+            updateAwayUi()
+            if (prefs.awayMode) AwayService.start(this)
+            maybeSuggestAway()
             PublicIp.refreshAsync(prefs)
             ipChangedRegistered = true
             PublicIp.onIpChanged = { PublicIp.refreshAsync(prefs); renderCameras() }
@@ -156,12 +259,14 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
 
     override fun onStop() {
         PublicIp.onIpChanged = null
+        motionMonitor.stop()
         playerManager?.stopAll()
         super.onStop()
     }
 
     override fun onResume() {
         super.onResume()
+        findViewById<BottomNavigationView>(R.id.bottomNav)?.selectedItemId = R.id.nav_monitor
         updateBanner()
     }
 
@@ -190,11 +295,97 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         camerasById = cameras.associateBy { it.id }
 
         buildCameraPages(cameras, manager)
+        tvStatusSubtitle.text = "${cameras.size} kamera Hikvision di jaringan rumah"
+        tvTotalCameras.text = "${cameras.size} kamera terhubung"
         updateBanner()
+    }
+
+    /**
+     * Impor otomatis semua kanal cloud **sekali per proses** supaya setelah
+     * login tidak ada lagi BIND per kamera. Bila gagal (mis. offline), percobaan
+     * diulang saat layar dibuka lagi.
+     */
+    private fun syncCloudIfNeeded() {
+        val app = application as CctvApp
+        if (app.cloudImportAttempted) return
+        val session = app.cloudAuth.session.value ?: return
+        app.cloudImportAttempted = true
+        lifecycleScope.launch {
+            val result = runCatching {
+                val devices = app.cloudRepo.syncDevices(session)
+                val prepared = app.cloudRepo.prepareForImport(
+                    session,
+                    devices,
+                    prefs.defaultUser,
+                    prefs.defaultPass
+                )
+                CloudCameraImporter(prefs).import(prepared).changed
+            }
+            if (result.isFailure) {
+                app.cloudImportAttempted = false
+                return@launch
+            }
+            if (result.getOrDefault(false)) {
+                applyConfigIfNeeded()
+                startAllCameras()
+            }
+        }
+    }
+
+    /**
+     * Segarkan kode verifikasi langsung dari NVR di LAN, sekali per proses.
+     *
+     * Saat ponsel berada di rumah, ISAPI perangkat adalah sumber kode paling
+     * akurat: nilai yang tersimpan dari sinkronisasi cloud atau tebakan lama
+     * yang salah ikut diperbaiki sebelum stream cloud dibuka. Hanya host yang
+     * benar-benar satu subnet dengan ponsel yang dicoba.
+     */
+    private fun refreshLanCodeIfNeeded() {
+        val app = application as CctvApp
+        if (app.lanCodeAttempted) return
+        val user = prefs.defaultUser
+        val pass = prefs.defaultPass
+        if (user.isBlank() || pass.isBlank()) return
+
+        // Host NVR lokal → gabungan serial perangkat & kanal.
+        val targets = LinkedHashMap<String, LinkedHashSet<String>>()
+        for (camera in prefs.cameras()) {
+            val device = camera.cloudDevice ?: continue
+            if (!device.valid) continue
+            val host = device.localIp.ifBlank { camera.ip }.trim()
+            if (host.isBlank() || !EndpointResolver.isLocalSubnet(host)) continue
+            val serials = targets.getOrPut(host) { LinkedHashSet() }
+            serials.add(device.serial)
+            serials.add(device.channelSerial)
+            serials.add(device.cloudDeviceId.substringBefore('#'))
+            serials.remove("")
+        }
+        if (targets.isEmpty()) return
+        app.lanCodeAttempted = true
+        lifecycleScope.launch {
+            for ((host, serials) in targets) {
+                val code = app.cloudRepo.refreshVerificationCodeFromLan(
+                    host,
+                    user,
+                    pass,
+                    serials.toList()
+                )
+                if (code.isBlank()) continue
+                // Kode baru sudah tersimpan per serial. Mulai ulang stream agar
+                // dekripsi memakai kunci yang benar, bukan kode lama di memori.
+                playerManager?.stopAll()
+                startAllCameras()
+                break
+            }
+        }
     }
 
     private fun buildCameraPages(cameras: List<Camera>, manager: PlayerManager) {
         val pages = if (cameras.isEmpty()) listOf(emptyList()) else cameras.chunked(CAMERAS_PER_PAGE)
+        cameraPages = pages
+        // Impor cloud atau perubahan konfigurasi bisa selesai saat pengguna
+        // sudah berpindah halaman; jangan paksa kembali ke halaman pertama.
+        val active = pagerCameras.currentItem.coerceIn(0, pages.lastIndex)
         val pageViews = pages.map { pageCams -> createPageView(pageCams, manager) }
 
         pagerCameras.adapter = object : RecyclerView.Adapter<PageHolder>() {
@@ -216,20 +407,23 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
                 }
             }
         }
-        pagerCameras.setCurrentItem(0, false)
-        updatePageIndicator(0)
-        pagerCameras.post { adjustPagerHeightToFit() }
+        pagerCameras.setCurrentItem(active, false)
+        updatePageIndicator(active)
+        // Rebuild bisa terjadi saat layout belum selesai (mis. setelah aksi bulk
+        // mengubah flag). Tunggu width tersedia supaya grid tidak collapse.
+        pagerCameras.doOnLayout { adjustPagerHeightToFit() }
     }
 
     private fun createPageView(pageCameras: List<Camera>, manager: PlayerManager): View {
         val page = layoutInflater.inflate(R.layout.page_camera_grid, pagerCameras, false) as GridLayout
-        val rows = if (pageCameras.isEmpty()) 1 else kotlin.math.ceil(pageCameras.size / 3.0).toInt().coerceAtLeast(1)
-        page.columnCount = 3
+        val rows = if (pageCameras.isEmpty()) 1 else
+            kotlin.math.ceil(pageCameras.size / GRID_COLUMNS.toDouble()).toInt().coerceAtLeast(1)
+        page.columnCount = GRID_COLUMNS
         page.rowCount = rows
         pageCameras.forEachIndexed { index, camera ->
             val tileView = layoutInflater.inflate(R.layout.item_camera, page, false)
-            val row = index / 3
-            val col = index % 3
+            val row = index / GRID_COLUMNS
+            val col = index % GRID_COLUMNS
             val params = GridLayout.LayoutParams().apply {
                 width = 0
                 height = GridLayout.LayoutParams.WRAP_CONTENT
@@ -242,10 +436,13 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             val tile = Tile(
                 root = tileView,
                 video = tileView.findViewById(R.id.videoLayout),
+                cloudSurface = tileView.findViewById(R.id.cloudSurface),
                 name = tileView.findViewById(R.id.tvCameraName),
                 status = tileView.findViewById(R.id.tvStatus),
                 overlay = tileView.findViewById(R.id.tvOverlay),
-                menu = tileView.findViewById(R.id.btnMenu)
+                menu = tileView.findViewById(R.id.btnMenu),
+                sensorChip = tileView.findViewById(R.id.tvSensorChip),
+                motionBadge = tileView.findViewById(R.id.tvMotionBadge)
             )
             tiles[camera.id] = tile
 
@@ -253,10 +450,29 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             tile.root.alpha = if (camera.enabled) 1f else 0.55f
             tile.menu.setOnClickListener { showControls(camera.id) }
             tile.root.setOnClickListener { openFullscreen(camera.id) }
-
-            manager.attach(camera, tile.video)
         }
         return page
+    }
+
+    /**
+     * Pasang player hanya untuk kamera di halaman yang terlihat. Kamera di halaman
+     * lain dilepas (surface + decoder dibebaskan) agar RAM/GPU tidak membengkak.
+     */
+    private fun attachVisiblePage(position: Int) {
+        val manager = playerManager ?: return
+        val visibleIds = cameraPages.getOrNull(position)?.map { it.id }?.toSet() ?: emptySet()
+        for (camera in camerasById.values) {
+            val tile = tiles[camera.id] ?: continue
+            if (camera.id in visibleIds) {
+                if (!manager.hasSlot(camera.id)) {
+                    manager.attach(camera, tile.video, tile.cloudSurface)
+                }
+            } else if (manager.hasSlot(camera.id)) {
+                manager.detach(camera.id)
+                playerStates[camera.id] = PlayerManager.State.IDLE
+                render(camera, prefs.flags(camera.id))
+            }
+        }
     }
 
     private fun updatePageIndicator(position: Int) {
@@ -271,15 +487,18 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
 
     private fun adjustPagerHeightToFit() {
         val w = pagerCameras.width
-        if (w <= 0) return
+        if (w <= 0) {
+            pagerCameras.post { adjustPagerHeightToFit() }
+            return
+        }
         val total = camerasById.size
-        val rows = if (total <= 0) 1 else kotlin.math.min(2, kotlin.math.ceil(total.coerceAtMost(CAMERAS_PER_PAGE) / 3.0).toInt()).coerceAtLeast(1)
-        // For mixed pages (e.g. 6 + 3 cameras), keep height for up to 2 rows so page 1 fits;
-        // page 2 will have fewer rows aligned at top with consistent pager height.
-        val maxRows = if (total > CAMERAS_PER_PAGE) 2 else rows
+        val rows = if (total <= 0) 1 else
+            kotlin.math.ceil(total.coerceAtMost(CAMERAS_PER_PAGE) / GRID_COLUMNS.toDouble()).toInt().coerceAtLeast(1)
+        // Semua halaman memakai tinggi yang sama agar pager tidak berubah saat geser.
+        val maxRows = GRID_COLUMNS
         val hPad = pagerCameras.paddingLeft + pagerCameras.paddingRight
-        val colWidth = ((w - hPad) / 3f)
-        val tileWidth = (colWidth - dp(8)).coerceAtLeast(dp(60).toFloat())
+        val colWidth = ((w - hPad) / GRID_COLUMNS.toFloat())
+        val tileWidth = (colWidth - dp(8)).coerceAtLeast(dp(120).toFloat())
         val tileHeight = tileWidth * 9f / 16f
         val desired = (tileHeight * maxRows + dp(8) * maxRows + dp(2)).toInt().coerceAtLeast(dp(100))
         val lp = pagerCameras.layoutParams
@@ -292,45 +511,91 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
     private class PageHolder(itemView: View) : RecyclerView.ViewHolder(itemView)
 
     private fun startAllCameras() {
+        // Untuk hemat RAM/CPU, mulai hanya kamera pada halaman yang terlihat.
+        startVisiblePage(pagerCameras.currentItem)
+    }
+
+    private fun startVisiblePage(position: Int) {
         val manager = playerManager ?: return
-        for (camera in camerasById.values.sortedBy { it.id }) {
+        // Pasang surface hanya untuk halaman ini sebelum mulai memutar.
+        attachVisiblePage(position)
+
+        // Batalkan penjadwalan halaman sebelumnya.
+        startGeneration++
+        val generation = startGeneration
+        uiHandler.removeCallbacksAndMessages(pageStartToken)
+
+        val visible = cameraPages.getOrNull(position).orEmpty()
+        val visibleIds = visible.map { it.id }.toSet()
+
+        // Hentikan kamera di halaman lain supaya tidak ada decoder yang jalan diam-diam.
+        for (camera in camerasById.values) {
+            if (camera.id !in visibleIds) {
+                manager.stop(camera.id)
+                motionActive.remove(camera.id)
+                playerStates[camera.id] = PlayerManager.State.IDLE
+                render(camera, prefs.flags(camera.id))
+            }
+        }
+
+        // Mulai bertahap (staggered): 1 kamera langsung, sisanya diberi jeda agar
+        // UI tidak tersendat saat banyak decoder dimulai bersamaan.
+        visible.forEachIndexed { index, camera ->
             val flags = prefs.flags(camera.id)
-            if (!camera.enabled) {
+            val canPlay = camera.enabled && !flags.blocked && hasCredentials(camera)
+            if (!canPlay) {
                 manager.stop(camera.id)
                 playerStates[camera.id] = PlayerManager.State.STOPPED
                 render(camera, flags)
-                continue
-            }
-            if (flags.blocked) {
-                manager.stop(camera.id)
-                playerStates[camera.id] = PlayerManager.State.STOPPED
-                render(camera, flags)
-                continue
-            }
-            if (!hasCredentials(camera)) {
-                manager.stop(camera.id)
-                playerStates[camera.id] = PlayerManager.State.STOPPED
-                render(camera, flags)
-                continue
+                return@forEachIndexed
             }
             playerStates[camera.id] = PlayerManager.State.LOADING
             render(camera, flags)
-            manager.play(camera, false)
+
+            val start = Runnable {
+                if (startGeneration == generation) {
+                    val c = camerasById[camera.id] ?: return@Runnable
+                    val f = prefs.flags(c.id)
+                    if (c.enabled && !f.blocked && hasCredentials(c)) manager.play(c, false)
+                }
+            }
+            if (index == 0) {
+                start.run()
+            } else {
+                uiHandler.postAtTime(
+                    start,
+                    pageStartToken,
+                    SystemClock.uptimeMillis() + index * 300L
+                )
+            }
         }
     }
 
     private fun onCameraChanged(cameraId: Int, forceRefresh: Boolean) {
+        // Impor cloud / perubahan daftar kamera mengganti seluruh grid.
+        if (prefs.configRev != lastConfigRev) {
+            applyConfigIfNeeded()
+            startAllCameras()
+            return
+        }
         val camera = camerasById[cameraId] ?: return
+        // Sensor gerak bisa baru diubah dari sheet: segarkan target pemantauan.
+        motionMonitor.updateCameras(cameraPages.getOrNull(pagerCameras.currentItem).orEmpty())
         val flags = prefs.flags(cameraId)
         val manager = playerManager ?: return
+        val visibleIds = cameraPages.getOrNull(pagerCameras.currentItem)?.map { it.id }?.toSet() ?: emptySet()
+        val isVisible = cameraId in visibleIds
+        if (isVisible && !manager.hasSlot(cameraId)) {
+            tiles[cameraId]?.let { manager.attach(camera, it.video, it.cloudSurface) }
+        }
 
         when {
-            !camera.enabled || flags.blocked -> {
+            !isVisible -> {
                 manager.stop(cameraId)
-                playerStates[cameraId] = PlayerManager.State.STOPPED
+                playerStates[cameraId] = PlayerManager.State.IDLE
                 render(camera, flags)
             }
-            !hasCredentials(camera) -> {
+            !camera.enabled || flags.blocked || !hasCredentials(camera) -> {
                 manager.stop(cameraId)
                 playerStates[cameraId] = PlayerManager.State.STOPPED
                 render(camera, flags)
@@ -342,7 +607,8 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
     }
 
     private fun hasCredentials(camera: Camera): Boolean =
-        prefs.effectiveUser(camera).isNotBlank()
+        prefs.effectiveUser(camera).isNotBlank() ||
+            camera.cloudDevice?.valid == true
 
     private fun showControls(cameraId: Int) {
         CameraControlSheet.newInstance(cameraId)
@@ -355,12 +621,113 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         startActivity(intent)
     }
 
+    // ---------------- Mode Away ----------------
+
+    private fun toggleAway() {
+        if (prefs.awayMode) {
+            AwayService.stop(this)
+            prefs.awayMode = false
+            updateAwayUi()
+            Toast.makeText(this, "Mode Away dimatikan.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                REQ_NOTIF
+            )
+            return
+        }
+        enableAway()
+    }
+
+    private fun enableAway() {
+        prefs.awayMode = true
+        AwayService.start(this)
+        updateAwayUi()
+        Toast.makeText(
+            this,
+            "Mode Away aktif. Gerakan akan dikirim sebagai notifikasi.",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun updateAwayUi() {
+        if (!::btnAway.isInitialized) return
+        val on = prefs.awayMode
+        val active = camerasById.values.count { it.enabled }
+        btnAway.text = if (on) "MATIKAN MODE AWAY" else "AKTIFKAN MODE AWAY"
+        btnAway.backgroundTintList = ColorStateList.valueOf(
+            ContextCompat.getColor(this, if (on) R.color.danger else R.color.accent)
+        )
+        tvAwayStatus.text = if (on) {
+            "Aktif — memantau gerakan $active kamera. Foto gerakan tersimpan di galeri " +
+                "dan dikirim sebagai notifikasi."
+        } else {
+            "Nonaktif. Aktifkan saat meninggalkan rumah: aplikasi memantau gerakan kamera " +
+                "dan mengirim notifikasi berisi foto."
+        }
+    }
+
+    /** Tawarkan Mode Away sekali setiap 12 jam bila terdeteksi di luar jaringan rumah. */
+    private fun maybeSuggestAway() {
+        if (prefs.awayMode || camerasById.isEmpty()) return
+        val cameras = camerasById.values.filter { it.enabled }
+        if (cameras.isEmpty() || !hasCredentials(cameras.first())) return
+        val now = System.currentTimeMillis()
+        if (now - prefs.awayPromptAt < 12 * 60 * 60 * 1000L) return
+        val offLan = cameras.count { EndpointResolver.resolve(it, remoteSettings).offLan }
+        if (offLan == 0) return
+        prefs.awayPromptAt = now
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Aktifkan Mode Away?")
+            .setMessage(
+                "Anda terdeteksi di luar jaringan rumah. Aktifkan Mode Away agar aplikasi " +
+                    "memantau gerakan kamera dan mengirim notifikasi berisi foto."
+            )
+            .setPositiveButton("Aktifkan") { _, _ -> toggleAway() }
+            .setNegativeButton("Nanti", null)
+            .show()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_NOTIF) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                enableAway()
+            } else {
+                Toast.makeText(
+                    this,
+                    "Izin notifikasi diperlukan agar Mode Away bisa memberi tahu gerakan.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
     // ---------------- status tile ----------------
 
     override fun onPlayerState(cameraId: Int, state: PlayerManager.State) {
         val camera = camerasById[cameraId] ?: return
         playerStates[cameraId] = state
+        if (state == PlayerManager.State.PLAYING) playerMessages.remove(cameraId)
         render(camera, prefs.flags(cameraId))
+    }
+
+    override fun onPlayerMessage(cameraId: Int, message: String?) {
+        android.util.Log.d("MainActivity", "pesan cam=$cameraId: $message")
+        playerMessages[cameraId] = message
+        camerasById[cameraId]?.let { render(it, prefs.flags(cameraId)) }
     }
 
     private fun render(camera: Camera, flags: CameraFlags) {
@@ -371,11 +738,14 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         val chips = ArrayList<String>()
         chips.add("SUB ${camera.streamId(false)}")
         if (camera.isNvr) chips.add("NVR")
+        if (camera.cloudDevice?.valid == true) chips.add("CLOUD")
         if (endpoint.remote) chips.add(if (endpoint.automatic) "LUAR AUTO" else "LUAR")
+        if (prefs.blockRtspOnCellular && NetworkType.isCellular(this)) chips.add("DATA")
         if (flags.black) chips.add("HITAM")
         if (flags.streamOff) chips.add("STREAM OFF")
         if (flags.rtspOff) chips.add("RTSP OFF")
         if (flags.nvrOff) chips.add("NVR OFF")
+        if (flags.nightBoost) chips.add("NIGHT+")
         if (!camera.enabled) chips.add("NONAKTIF")
         val dayNight = camera.dayNight
         if (dayNight != DayNight.AUTO) {
@@ -386,11 +756,42 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             })
         }
         tile.status.text = chips.joinToString(" • ")
+        tile.status.visibility = View.VISIBLE
+
+        // Indikator sensor gerak & badge GERAK di atas gambar kamera.
+        tile.sensorChip.visibility = if (camera.enabled) View.VISIBLE else View.GONE
+        val snapshotOk = motionSnapshotOk[camera.id]
+        when {
+            snapshotOk == false -> {
+                tile.sensorChip.text = "SNAP GAGAL"
+                tile.sensorChip.setTextColor(ContextCompat.getColor(this, R.color.danger))
+            }
+            camera.movementDetect -> {
+                tile.sensorChip.text = "SENSOR ON"
+                tile.sensorChip.setTextColor(ContextCompat.getColor(this, R.color.accent))
+            }
+            else -> {
+                tile.sensorChip.text = "DETEKSI ON"
+                tile.sensorChip.setTextColor(ContextCompat.getColor(this, R.color.accent))
+            }
+        }
+        val motion = motionActive.contains(camera.id)
+        tile.motionBadge.visibility = if (motion) View.VISIBLE else View.GONE
+        if (motion) {
+            tile.motionBadge.text = motionLabels[camera.id] ?: "GERAK"
+            tile.motionBadge.animate().cancel()
+            tile.motionBadge.alpha = 1f
+            tile.motionBadge.animate().alpha(0.35f).setDuration(450).withEndAction {
+                if (motionActive.contains(camera.id)) {
+                    tile.motionBadge.animate().alpha(1f).setDuration(450).start()
+                }
+            }.start()
+        }
 
         val overlay = when {
             !camera.enabled -> "NONAKTIF"
             !hasCredentials(camera) -> "Isi kredensial di Setelan"
-            !endpoint.remote && endpoint.offLan ->
+            !endpoint.remote && endpoint.offLan && camera.cloudDevice?.valid != true ->
                 if (prefs.remoteAuto) {
                     "Luar jaringan — IP publik rumah belum terdeteksi"
                 } else {
@@ -401,7 +802,9 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             camera.dayNight == DayNight.DAY -> "NORMAL"
             flags.black -> "HITAM"
             state == PlayerManager.State.LOADING -> "Memuat…"
-            state == PlayerManager.State.ERROR -> "Gagal — mencoba lagi"
+            state == PlayerManager.State.ERROR ->
+                playerMessages[camera.id]?.takeIf { it.isNotBlank() }
+                    ?: "Gagal — mencoba lagi"
             state == PlayerManager.State.STOPPED -> "Berhenti"
             state == PlayerManager.State.IDLE -> "Menunggu"
             else -> null
@@ -512,8 +915,9 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         MaterialAlertDialogBuilder(this)
             .setTitle("Matikan semua kamera?")
             .setMessage(
-                "Semua $enabled kamera yang aktif akan dihentikan sekaligus. " +
-                    "Kamera yang dimatikan akan berhenti mengirim video ke grid."
+                "Semua $enabled kamera akan dihitamkan lewat Hik-Connect dan pemutaran " +
+                    "di HP ini dihentikan. Firmware NVR tidak mendukung matikan kanal, " +
+                    "jadi privacy mask dipakai supaya HP lain/NVR juga melihat layar hitam."
             )
             .setPositiveButton("Matikan semua") { _, _ -> startTurnOffAll() }
             .setNegativeButton("Batal", null)
@@ -528,7 +932,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         MaterialAlertDialogBuilder(this)
             .setTitle("Nyalakan kembali semua kamera?")
             .setMessage(
-                "Semua $enabled kamera akan dimulai ulang. " +
+                "Semua $enabled kamera akan dimulai ulang dan privacy mask dipulihkan. " +
                     "$blocked kamera saat ini dalam status mati."
             )
             .setPositiveButton("Nyalakan semua") { _, _ -> startTurnOnAll() }
@@ -545,11 +949,18 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         bannerProgress.visibility = View.VISIBLE
 
         lifecycleScope.launch {
-            val report = try {
-                repository.setAllCamerasOff(camerasById.values.toList())
+            val targets = camerasById.values.toList()
+            val local = try {
+                repository.setAllCamerasOff(targets)
             } catch (e: Exception) {
                 BulkResult(listOf(e.message ?: "Gagal mematikan."))
             }
+            val cloud = try {
+                repository.setAllBlack(targets, on = true)
+            } catch (e: Exception) {
+                BulkResult(listOf(e.message ?: "Gagal menghitamkan lewat cloud."))
+            }
+            val report = BulkResult(local.errors + cloud.errors)
             restoring = false
             btnTurnOffAll.isEnabled = true
             btnTurnOnAll.isEnabled = true
@@ -584,11 +995,18 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         bannerProgress.visibility = View.VISIBLE
 
         lifecycleScope.launch {
-            val report = try {
-                repository.setAllCamerasOn(camerasById.values.toList())
+            val targets = camerasById.values.toList()
+            val local = try {
+                repository.setAllCamerasOn(targets)
             } catch (e: Exception) {
                 BulkResult(listOf(e.message ?: "Gagal menyalakan."))
             }
+            val cloud = try {
+                repository.setAllBlack(targets, on = false)
+            } catch (e: Exception) {
+                BulkResult(listOf(e.message ?: "Gagal memulihkan privacy mask lewat cloud."))
+            }
+            val report = BulkResult(local.errors + cloud.errors)
             restoring = false
             btnTurnOffAll.isEnabled = true
             btnTurnOnAll.isEnabled = true
@@ -612,12 +1030,12 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
     }
 
     private fun confirmTurnOffAllRtsp() {
-        val targets = camerasById.values.count { it.enabled && !it.isNvr }
+        val targets = camerasById.values.count { it.enabled }
         MaterialAlertDialogBuilder(this)
             .setTitle("Matikan semua RTSP?")
             .setMessage(
-                "Layanan RTSP akan dimatikan pada $targets kamera aktif (non-NVR). " +
-                    "Kamera NVR tidak diubah untuk menghindari gangguan pada semua kanal."
+                "Stream akan diputus pada $targets kamera aktif. Kanal NVR diputus satu per satu " +
+                    "lewat sumber IP kamera, lalu bisa dipulihkan lewat NYALAKAN SEMUA."
             )
             .setPositiveButton("Matikan RTSP") { _, _ -> startTurnOffAllRtsp() }
             .setNegativeButton("Batal", null)
@@ -655,7 +1073,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             updateBanner()
 
             val body = if (report.ok) {
-                "RTSP semua kamera (non-NVR) berhasil dimatikan."
+                "Stream/RTSP semua kamera berhasil dimatikan."
             } else {
                 report.errors.joinToString("\n") { "• $it" }
             }
