@@ -59,6 +59,24 @@ class AppPrefs(context: Context) {
         get() = prefs.getString(KEY_PASS, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_PASS, value).apply()
 
+    /** Catatan aksi kontrol terbaru (terbaru lebih dulu). */
+    fun activityLog(): List<ActivityLogEntry> =
+        ActivityLogCodec.decode(prefs.getString(KEY_ACTIVITY_LOG, null))
+
+    /** Tambah catatan aksi; jumlah entri dibatasi oleh codec. */
+    fun addActivity(title: String, detail: String) {
+        val entry = ActivityLogEntry(
+            at = System.currentTimeMillis(),
+            title = title.trim(),
+            detail = detail.trim()
+        )
+        val raw = ActivityLogCodec.append(
+            prefs.getString(KEY_ACTIVITY_LOG, null),
+            entry
+        )
+        prefs.edit().putString(KEY_ACTIVITY_LOG, raw).apply()
+    }
+
     var autoRestore: Boolean
         get() = prefs.getBoolean(KEY_AUTO_RESTORE, true)
         set(value) = prefs.edit().putBoolean(KEY_AUTO_RESTORE, value).apply()
@@ -447,6 +465,7 @@ class AppPrefs(context: Context) {
         private const val KEY_USER = "default_user"
         private const val KEY_PASS = "default_pass"
         private const val KEY_CAMERAS = "cameras_json"
+        private const val KEY_ACTIVITY_LOG = "activity_log"
         private const val KEY_CLOUD_CODES = "cloud_verification_codes"
         private const val KEY_CONFIG_REV = "config_rev"
         private const val KEY_AUTO_RESTORE = "auto_restore"
