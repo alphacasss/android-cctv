@@ -41,6 +41,14 @@ class CloudIsapiClient(
         wrap("PUT", path, responseBody)
     }
 
+    /** POST lewat cloud ISAPI passthrough, dipakai pencarian rekaman. */
+    suspend fun post(path: String, body: String): IsapiResponse = withContext(Dispatchers.IO) {
+        val current = session
+            ?: throw IllegalStateException("Sesi cloud tidak tersedia.")
+        val responseBody = cloudRepo.isapiCommand(current, device, "POST", path, asXmlDocument(body))
+        wrap("POST", path, responseBody)
+    }
+
     /**
      * Passthrough cloud memotong deklarasi XML dari respons GET, jadi backup
      * yang disimpan aplikasi bisa berisi elemen root tanpa deklarasi. Firmware

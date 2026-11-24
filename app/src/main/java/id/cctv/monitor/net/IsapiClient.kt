@@ -35,6 +35,11 @@ class IsapiClient(
         return IsapiResponse(code, bytes.toString(Charsets.UTF_8))
     }
 
+    fun post(path: String, body: String): IsapiResponse {
+        val (code, bytes) = request("POST", path, body)
+        return IsapiResponse(code, bytes.toString(Charsets.UTF_8))
+    }
+
     /** GET biner (mis. snapshot JPEG). Null bila respons bukan 2xx. */
     fun getBytes(path: String): ByteArray? {
         val (code, bytes) = request("GET", path, null)
