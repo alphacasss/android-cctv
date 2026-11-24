@@ -9,6 +9,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.view.Gravity
+import android.widget.TextView
 import android.widget.Toast
 import java.io.File
 
@@ -19,6 +21,10 @@ class UpdateInstallActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(TextView(this).apply {
+            text = "Menyiapkan pemasangan…"
+            gravity = Gravity.CENTER
+        })
         val path = intent.getStringExtra(UpdateNotifications.EXTRA_PATH)
         val file = if (path.isNullOrBlank()) null else File(path)
         if (file == null || !file.exists()) {
@@ -84,7 +90,7 @@ class UpdateInstallActivity : Activity() {
                 this,
                 REQ_INSTALL_RESULT,
                 callbackIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             )
             val session = installer.openSession(sessionId)
             session.use { s ->
@@ -94,6 +100,8 @@ class UpdateInstallActivity : Activity() {
                 s.commit(callback.intentSender)
             }
             Log.i(TAG, "sesi pemasangan $sessionId dikirim")
+            // Sesi sudah menguasai berkas; activity ini boleh tutup supaya tidak menyisakan layar kosong.
+            finish()
         } catch (e: Exception) {
             Log.e(TAG, "gagal menyiapkan pemasangan", e)
             Toast.makeText(

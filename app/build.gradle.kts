@@ -22,8 +22,8 @@ android {
         applicationId = "id.cctv.monitor"
         minSdk = 24
         targetSdk = 34
-        versionCode = 10
-        versionName = "1.1.8"
+        versionCode = 12
+        versionName = "1.1.10"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")

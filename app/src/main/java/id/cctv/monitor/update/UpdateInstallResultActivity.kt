@@ -17,7 +17,7 @@ class UpdateInstallResultActivity : Activity() {
             PackageInstaller.STATUS_FAILURE
         )
         val detail = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-        Log.i(TAG, "install status=$status detail=$detail")
+        Log.i(TAG, "install status=$status detail=$detail extras=${intent.extras}")
 
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             val confirmation = pendingConfirmation()
