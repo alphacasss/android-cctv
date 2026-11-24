@@ -1,6 +1,7 @@
 package id.cctv.monitor.update
 
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Bundle
 import android.util.Log
@@ -17,6 +18,16 @@ class UpdateInstallResultActivity : Activity() {
         )
         val detail = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
         Log.i(TAG, "install status=$status detail=$detail")
+
+        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            val confirmation = pendingConfirmation()
+            if (confirmation != null) {
+                startActivity(confirmation)
+                finish()
+                return
+            }
+        }
+
         Toast.makeText(
             this,
             InstallStatusMessage.forStatus(status, detail),
@@ -27,6 +38,10 @@ class UpdateInstallResultActivity : Activity() {
         }
         finish()
     }
+
+    @Suppress("DEPRECATION")
+    private fun pendingConfirmation(): Intent? =
+        intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
 
     private companion object {
         const val TAG = "UpdateInstall"

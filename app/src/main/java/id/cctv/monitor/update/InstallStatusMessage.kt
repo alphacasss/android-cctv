@@ -1,19 +1,22 @@
 package id.cctv.monitor.update
 
-/** Pesan pengguna untuk kode status PackageInstaller (angka mengikuti konstanta Android). */
+import android.content.pm.PackageInstaller
+
+/** Pesan pengguna untuk kode status PackageInstaller. */
 internal object InstallStatusMessage {
 
     fun forStatus(status: Int, detail: String?): String {
         val base = when (status) {
-            1 -> "Pembaruan berhasil dipasang."
-            0 -> "Pemasangan gagal."
-            2 -> "Pemasangan dibatalkan."
-            3 -> "Pemasangan diblokir oleh perangkat."
-            4 -> "Konflik dengan aplikasi yang sudah terpasang."
-            5 -> "APK tidak kompatibel dengan perangkat ini."
-            6 -> "APK tidak valid atau rusak."
-            7 -> "Ruang penyimpanan tidak cukup."
-            8 -> "Izin pemasangan ditolak."
+            PackageInstaller.STATUS_SUCCESS -> "Pembaruan berhasil dipasang."
+            PackageInstaller.STATUS_PENDING_USER_ACTION -> "Konfirmasi pemasangan diperlukan."
+            PackageInstaller.STATUS_FAILURE -> "Pemasangan gagal."
+            PackageInstaller.STATUS_FAILURE_BLOCKED -> "Pemasangan diblokir oleh perangkat."
+            PackageInstaller.STATUS_FAILURE_ABORTED -> "Pemasangan dibatalkan."
+            PackageInstaller.STATUS_FAILURE_INVALID -> "APK tidak valid atau rusak."
+            PackageInstaller.STATUS_FAILURE_CONFLICT -> "Konflik dengan aplikasi yang sudah terpasang."
+            PackageInstaller.STATUS_FAILURE_STORAGE -> "Ruang penyimpanan tidak cukup."
+            PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "APK tidak kompatibel dengan perangkat ini."
+            PackageInstaller.STATUS_FAILURE_TIMEOUT -> "Pemasangan timeout. Coba lagi."
             else -> "Pemasangan gagal (kode $status)."
         }
         return if (detail.isNullOrBlank()) base else "$base Detail: $detail"
