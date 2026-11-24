@@ -265,4 +265,32 @@ object OfficialSdkRuntime {
             }
         }
     }
+
+    /**
+     * Rekam stream yang sedang berjalan ke [path]. SDK mengembalikan 0 bila
+     * diterima; kode lain (mis. 1002) berarti format/flag ditolak.
+     */
+    fun startRecord(handle: Long, path: String): Boolean {
+        if (handle == 0L || !::nativeClass.isInitialized) return false
+        return try {
+            val result = synchronized(streamLock) {
+                call("startRecord", handle, path, 0)
+            } as? Int
+            result == null || result == 0
+        } catch (e: Throwable) {
+            Log.w(TAG, "startRecord gagal: ${e.message}")
+            false
+        }
+    }
+
+    fun stopRecord(handle: Long) {
+        if (handle == 0L || !::nativeClass.isInitialized) return
+        try {
+            synchronized(streamLock) {
+                call("stopRecord", handle, 0)
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "stopRecord gagal: ${e.message}")
+        }
+    }
 }

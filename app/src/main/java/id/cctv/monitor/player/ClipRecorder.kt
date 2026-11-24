@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import id.cctv.monitor.cloud.stream.CloudPlayer
 import id.cctv.monitor.data.AppPrefs
 import id.cctv.monitor.data.Camera
 import id.cctv.monitor.net.EndpointResolver
@@ -14,10 +15,11 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Merekam satu stream kamera ke file .ts memakai jalur "sout" VLC.
- * Tidak memakai surface, jadi bisa dipakai tanpa mengganggu grid.
+ * Merekam satu stream kamera ke file .ts. Sesi cloud yang sedang dipakai
+ * direkam langsung dari pemutarnya; kamera lokal memakai jalur "sout" VLC.
  */
 object ClipRecorder {
 
@@ -27,12 +29,27 @@ object ClipRecorder {
     private var target: File? = null
     private var callback: ((File?, String?) -> Unit)? = null
 
-    fun isRecording(cameraId: Int): Boolean = player != null && currentCameraId == cameraId
+    /** Pemutar cloud aktif per kamera, didaftarkan oleh PlayerManager. */
+    private val cloudPlayers = ConcurrentHashMap<Int, CloudPlayer>()
+    private var cloudPlayer: CloudPlayer? = null
+    private var cloudRecording = false
 
-    fun isBusy(): Boolean = player != null
+    fun registerCloudPlayer(cameraId: Int, player: CloudPlayer) {
+        cloudPlayers[cameraId] = player
+    }
+
+    /** Lepas pendaftaran hanya bila [player] masih yang aktif. */
+    fun unregisterCloudPlayer(cameraId: Int, player: CloudPlayer) {
+        cloudPlayers.remove(cameraId, player)
+    }
+
+    fun isRecording(cameraId: Int): Boolean =
+        (cloudRecording || player != null) && currentCameraId == cameraId
+
+    fun isBusy(): Boolean = cloudRecording || player != null
 
     /** Kamera yang sedang direkam, atau -1 bila tidak ada rekaman. */
-    fun activeCameraId(): Int = if (player != null) currentCameraId else -1
+    fun activeCameraId(): Int = if (isBusy()) currentCameraId else -1
 
     fun start(
         context: Context,
@@ -41,10 +58,42 @@ object ClipRecorder {
         dir: File,
         onDone: (File?, String?) -> Unit
     ) {
-        if (player != null) {
+        if (isBusy()) {
             onDone(null, "Rekaman lain masih berjalan. Hentikan dulu.")
             return
         }
+        dir.mkdirs()
+        val name = "cctv_${camera.id}_${
+            SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        }.ts"
+        val file = File(dir, name)
+
+        // Cloud memakai sesi live yang sudah terbuka: token relay sekali pakai
+        // tidak bisa dipakai ulang untuk koneksi RTSP/VLC kedua.
+        val cloud = cloudPlayers[camera.id]
+        if (cloud != null) {
+            if (!cloud.supportsRecording) {
+                onDone(null, "Rekaman jalur relay belum didukung. Aktifkan SDK resmi di pengaturan.")
+                return
+            }
+            val started = try {
+                cloud.startRecording(file)
+            } catch (t: Throwable) {
+                android.util.Log.w("ClipRecorder", "record cloud gagal: ${t.message}")
+                false
+            }
+            if (!started) {
+                onDone(null, "SDK gagal memulai rekaman cloud.")
+                return
+            }
+            cloudPlayer = cloud
+            cloudRecording = true
+            currentCameraId = camera.id
+            target = file
+            callback = onDone
+            return
+        }
+
         if (prefs.blockRtspOnCellular && NetworkType.isCellular(context.applicationContext)) {
             onDone(null, "Rekam RTSP diblokir saat paket data seluler.")
             return
@@ -57,11 +106,6 @@ object ClipRecorder {
             host = endpoint.host,
             rtspPort = endpoint.rtspPort
         )
-        dir.mkdirs()
-        val name = "cctv_${camera.id}_${
-            SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        }.ts"
-        val file = File(dir, name)
         val vlc = SharedVlc.get(context)
         val mp = MediaPlayer(vlc)
         val media = Media(vlc, Uri.parse(url))
@@ -92,11 +136,20 @@ object ClipRecorder {
     }
 
     fun stop(onDone: ((File?, String?) -> Unit)? = null) {
-        if (player == null) {
+        if (!isBusy()) {
             onDone?.invoke(null, "Tidak ada rekaman yang berjalan.")
             return
         }
         if (onDone != null) callback = onDone
+        if (cloudRecording) {
+            try {
+                cloudPlayer?.stopRecording()
+            } catch (_: Throwable) {
+            }
+            // SDK menutup dan memfinalisasi file secara sinkron.
+            handler.postDelayed({ finish(null) }, 300)
+            return
+        }
         try {
             player?.stop()
         } catch (_: Throwable) {
@@ -108,6 +161,8 @@ object ClipRecorder {
     private fun finish(error: String?) {
         val mp = player
         player = null
+        cloudPlayer = null
+        cloudRecording = false
         currentCameraId = -1
         val file = target
         target = null

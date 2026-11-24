@@ -22,6 +22,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
+import java.io.File
 
 /**
  * Pemutar cloud memakai SDK resmi Hik-Connect. Beda dengan [CloudVideoPlayer],
@@ -40,6 +41,39 @@ class OfficialSdkPlayer(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
     private var handle = 0L
+
+    @Volatile
+    private var recordingFile: File? = null
+
+    override val supportsRecording: Boolean get() = true
+
+    override fun startRecording(file: File): Boolean {
+        val active = handle
+        if (active == 0L) return false
+        return try {
+            file.parentFile?.mkdirs()
+            val ok = OfficialSdkRuntime.startRecord(active, file.absolutePath)
+            if (ok) recordingFile = file
+            ok
+        } catch (t: Throwable) {
+            Log.w(TAG, "startRecord gagal: ${t.message}")
+            false
+        }
+    }
+
+    override fun stopRecording(): Boolean {
+        val active = handle
+        val file = recordingFile ?: return false
+        recordingFile = null
+        return try {
+            if (active != 0L) OfficialSdkRuntime.stopRecord(active)
+            Log.d(TAG, "stopRecord size=${file.length()}")
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "stopRecord gagal: ${t.message}")
+            false
+        }
+    }
 
     /** Dipakai bila SDK tidak bisa dipasang/diinisialisasi di perangkat ini. */
     @Volatile
@@ -96,6 +130,7 @@ class OfficialSdkPlayer(
         job = null
         surfaceView.holder.removeCallback(holderCallback)
         val active = handle
+        if (recordingFile != null) stopRecording()
         handle = 0L
         if (active != 0L) OfficialSdkRuntime.closeStream(active)
         relayFallback?.let { relay -> main.post { relay.release() } }
@@ -150,7 +185,9 @@ class OfficialSdkPlayer(
             emit(token, CloudVideoPlayer.State.PLAYING, null)
 
             // Jaga coroutine tetap hidup sampai stop()/surfaceDestroyed.
-            while (isActive) delay(1_000L)
+            while (isActive) {
+                delay(1_000L)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {

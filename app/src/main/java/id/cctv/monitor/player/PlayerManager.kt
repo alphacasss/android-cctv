@@ -228,6 +228,7 @@ class PlayerManager(context: Context, private val prefs: AppPrefs) {
             )
         }
         slot.cloudPlayer = player
+        ClipRecorder.registerCloudPlayer(camera.id, player)
         player.showSurface(true)
         player.start(mainStream)
     }
@@ -297,6 +298,7 @@ class PlayerManager(context: Context, private val prefs: AppPrefs) {
         slot.cloudActive = false
         slot.cloudStarted = false
         slot.cloudSurface?.visibility = View.GONE
+        slot.cloudPlayer?.let { ClipRecorder.unregisterCloudPlayer(camera.id, it) }
         slot.cloudPlayer?.release()
         slot.cloudPlayer = null
         val cloudDevice = camera.cloudDevice
@@ -454,6 +456,7 @@ class PlayerManager(context: Context, private val prefs: AppPrefs) {
 
     private fun releaseSlot(slot: Slot) {
         cancelRetry(slot)
+        slot.cloudPlayer?.let { ClipRecorder.unregisterCloudPlayer(slot.camera.id, it) }
         try {
             slot.cloudPlayer?.release()
         } catch (_: Throwable) {
