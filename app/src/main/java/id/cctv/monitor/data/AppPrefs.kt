@@ -84,6 +84,16 @@ class AppPrefs(context: Context) {
         get() = prefs.getBoolean(KEY_AUTO_RESTORE, true)
         set(value) = prefs.edit().putBoolean(KEY_AUTO_RESTORE, value).apply()
 
+    /** Cek rilis GitHub otomatis saat aplikasi dibuka (maksimal 1×/24 jam). */
+    var autoUpdate: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_UPDATE, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_UPDATE, value).apply()
+
+    /** Waktu cek pembaruan terakhir (epoch millis). */
+    var lastUpdateCheckAt: Long
+        get() = prefs.getLong(KEY_LAST_UPDATE_CHECK_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_UPDATE_CHECK_AT, value).apply()
+
     /** Pakai decoder/renderer resmi Hik-Connect untuk stream cloud. */
     var useOfficialSdk: Boolean
         get() = prefs.getBoolean(KEY_USE_OFFICIAL_SDK, true)
@@ -472,6 +482,8 @@ class AppPrefs(context: Context) {
         private const val KEY_CLOUD_CODES = "cloud_verification_codes"
         private const val KEY_CONFIG_REV = "config_rev"
         private const val KEY_AUTO_RESTORE = "auto_restore"
+        private const val KEY_AUTO_UPDATE = "auto_update"
+        private const val KEY_LAST_UPDATE_CHECK_AT = "last_update_check_at"
         private const val KEY_AWAY_MODE = "away_mode"
         private const val KEY_AWAY_PROMPT = "away_prompt_at"
         private const val KEY_OBJECT_FILTER = "object_filter"
