@@ -70,7 +70,6 @@ class UpdateInstallActivity : Activity() {
     }
 
     private fun launchInstall(file: File) {
-        UpdateNotifications.cancelReady(this)
         try {
             val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
             val install = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
@@ -80,6 +79,7 @@ class UpdateInstallActivity : Activity() {
                 putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
             }
             startActivity(install)
+            UpdateNotifications.cancelReady(this)
         } catch (e: Exception) {
             Toast.makeText(this, "Gagal membuka installer: ${e.message}", Toast.LENGTH_LONG).show()
         }

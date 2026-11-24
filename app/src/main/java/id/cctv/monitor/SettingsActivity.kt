@@ -25,6 +25,7 @@ import id.cctv.monitor.net.EndpointResolver
 import id.cctv.monitor.net.IsapiClient
 import id.cctv.monitor.net.PublicIp
 import id.cctv.monitor.net.isapiError
+import id.cctv.monitor.update.ReleaseInfo
 import id.cctv.monitor.update.UpdateManager
 import id.cctv.monitor.update.UpdateNotifications
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +75,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var tvUpdateStatus: TextView
     private lateinit var btnCheckUpdate: MaterialButton
     private var refreshingIp = false
+    private var pendingUpdate: ReleaseInfo? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -207,6 +209,31 @@ class SettingsActivity : AppCompatActivity() {
         super.onPause()
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != UpdateNotifications.REQ_NOTIFY) return
+        val release = pendingUpdate ?: return
+        pendingUpdate = null
+        if (grantResults.firstOrNull() != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(
+                this,
+                "Unduh dibatalkan karena izin notifikasi tidak diberikan.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        UpdateManager.enqueue(this, release, manual = true)
+        Toast.makeText(
+            this,
+            "Unduh dimulai. Notifikasi akan muncul saat selesai.",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
     private fun renderUpdateStatus() {
         val last = prefs.lastUpdateCheckAt
         val checked = if (last <= 0L) {
@@ -257,9 +284,10 @@ class SettingsActivity : AppCompatActivity() {
                         .setNegativeButton("Nanti", null)
                         .setPositiveButton("Unduh & pasang") { _, _ ->
                             if (!UpdateNotifications.requestPermission(this@SettingsActivity)) {
+                                pendingUpdate = release
                                 Toast.makeText(
                                     this@SettingsActivity,
-                                    "Izinkan notifikasi dulu agar pemberitahuan pembaruan muncul.",
+                                    "Izinkan notifikasi. Unduh akan dimulai setelah izin diberikan.",
                                     Toast.LENGTH_LONG
                                 ).show()
                                 return@setPositiveButton
