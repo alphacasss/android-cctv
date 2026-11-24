@@ -25,6 +25,7 @@ import id.cctv.monitor.net.EndpointResolver
 import id.cctv.monitor.net.IsapiClient
 import id.cctv.monitor.net.PublicIp
 import id.cctv.monitor.net.isapiError
+import id.cctv.monitor.update.UpdateManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -68,6 +69,9 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var switchRemoteVpn: MaterialSwitch
     private lateinit var tvRemoteVpnInfo: TextView
     private lateinit var tvRemoteNotice: TextView
+    private lateinit var switchAutoUpdate: MaterialSwitch
+    private lateinit var tvUpdateStatus: TextView
+    private lateinit var btnCheckUpdate: MaterialButton
     private var refreshingIp = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -111,6 +115,9 @@ class SettingsActivity : AppCompatActivity() {
         switchRemoteAuto = findViewById(R.id.switchRemoteAuto)
         switchOfficialSdk = findViewById(R.id.switchOfficialSdk)
         switchBlockRtspCellular = findViewById(R.id.switchBlockRtspCellular)
+        switchAutoUpdate = findViewById(R.id.switchAutoUpdate)
+        tvUpdateStatus = findViewById(R.id.tvUpdateStatus)
+        btnCheckUpdate = findViewById(R.id.btnCheckUpdate)
 
         findViewById<MaterialButton>(R.id.btnSaveCred).setOnClickListener { saveCredentials() }
         findViewById<MaterialButton>(R.id.btnSaveRestore).setOnClickListener { saveRestoreSettings() }
@@ -123,6 +130,12 @@ class SettingsActivity : AppCompatActivity() {
         btnRefreshIp.setOnClickListener { refreshPublicIp(force = true) }
         btnDisableStreamEncryption.setOnClickListener { disableStreamEncryption() }
         btnRestoreAllNow.setOnClickListener { confirmRestoreAll() }
+        btnCheckUpdate.setOnClickListener { checkForUpdate() }
+
+        switchAutoUpdate.setOnCheckedChangeListener { _, checked ->
+            prefs.autoUpdate = checked
+            renderUpdateStatus()
+        }
 
         switchAutoRestore.setOnCheckedChangeListener { _, checked ->
             etRestoreDelay.isEnabled = checked
@@ -167,6 +180,8 @@ class SettingsActivity : AppCompatActivity() {
         switchRemoteAuto.isChecked = prefs.remoteAuto
         switchOfficialSdk.isChecked = prefs.useOfficialSdk
         switchBlockRtspCellular.isChecked = prefs.blockRtspOnCellular
+        switchAutoUpdate.isChecked = prefs.autoUpdate
+        renderUpdateStatus()
         etRemoteHostGlobal.setText(prefs.remoteHost)
         etRemoteHttpBase.setText(prefs.remoteHttpBase.toString())
         etRemoteRtspBase.setText(prefs.remoteRtspBase.toString())
@@ -189,6 +204,68 @@ class SettingsActivity : AppCompatActivity() {
         saveRemoteSettings(showToast = false)
         applyRestoreSettings(silent = true)
         super.onPause()
+    }
+
+    private fun renderUpdateStatus() {
+        val last = prefs.lastUpdateCheckAt
+        val checked = if (last <= 0L) {
+            "belum pernah"
+        } else {
+            SimpleDateFormat("dd MMM yyyy HH:mm", Locale.forLanguageTag("id-ID")).format(Date(last))
+        }
+        tvUpdateStatus.text = "Terpasang: ${BuildConfig.VERSION_NAME} • cek terakhir: $checked"
+    }
+
+    private fun checkForUpdate() {
+        btnCheckUpdate.isEnabled = false
+        tvUpdateStatus.text = "Mengecek pembaruan…"
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                UpdateManager.check(this@SettingsActivity, manual = true)
+            }
+            renderUpdateStatus()
+            btnCheckUpdate.isEnabled = true
+            when (result) {
+                UpdateManager.CheckResult.UpToDate -> Toast.makeText(
+                    this@SettingsActivity,
+                    "Versi Anda sudah terbaru.",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                UpdateManager.CheckResult.Failed -> Toast.makeText(
+                    this@SettingsActivity,
+                    "Gagal mengecek pembaruan. Periksa koneksi internet.",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                is UpdateManager.CheckResult.Available -> {
+                    val release = result.release
+                    val size = if (release.sizeBytes > 0L) {
+                        String.format(
+                            Locale.forLanguageTag("id-ID"),
+                            "%.1f MB",
+                            release.sizeBytes / 1024f / 1024f
+                        )
+                    } else {
+                        "ukuran tidak diketahui"
+                    }
+                    val notes = release.notes.ifBlank { "Perbaikan dan penyempurnaan." }
+                    MaterialAlertDialogBuilder(this@SettingsActivity)
+                        .setTitle("Pembaruan tersedia: ${release.version}")
+                        .setMessage("$notes\n\nUkuran: $size\n\nUnduh memakai paket data tetap diizinkan bila Anda memilih Unduh & pasang.")
+                        .setNegativeButton("Nanti", null)
+                        .setPositiveButton("Unduh & pasang") { _, _ ->
+                            UpdateManager.enqueue(this@SettingsActivity, release, manual = true)
+                            Toast.makeText(
+                                this@SettingsActivity,
+                                "Unduh dimulai. Notifikasi akan muncul saat selesai.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        .show()
+                }
+            }
+        }
     }
 
     private fun saveCredentials() {
