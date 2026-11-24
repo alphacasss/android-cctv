@@ -1,16 +1,18 @@
 package id.cctv.monitor.update
 
 import android.app.Activity
+import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
-import androidx.core.content.FileProvider
 import java.io.File
 
-/** Meluncurkan installer APK setelah izin "install unknown apps" tersedia. */
+/** Meluncurkan sesi pemasangan APK setelah izin "install unknown apps" tersedia. */
 class UpdateInstallActivity : Activity() {
 
     private var pendingFile: File? = null
@@ -71,22 +73,39 @@ class UpdateInstallActivity : Activity() {
 
     private fun launchInstall(file: File) {
         try {
-            val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
-            val install = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+            val installer = packageManager.packageInstaller
+            val params = PackageInstaller.SessionParams(
+                PackageInstaller.SessionParams.MODE_FULL_INSTALL
+            )
+            val sessionId = installer.createSession(params)
+            val callback = PendingIntent.getActivity(
+                this,
+                REQ_INSTALL_RESULT,
+                Intent(this, UpdateInstallResultActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val session = installer.openSession(sessionId)
+            session.use { s ->
+                s.openWrite("cctv-update.apk", 0, file.length()).use { output ->
+                    file.inputStream().use { input -> input.copyTo(output) }
+                }
+                s.commit(callback.intentSender)
             }
-            startActivity(install)
-            UpdateNotifications.cancelReady(this)
+            Log.i(TAG, "sesi pemasangan $sessionId dikirim")
         } catch (e: Exception) {
-            Toast.makeText(this, "Gagal membuka installer: ${e.message}", Toast.LENGTH_LONG).show()
+            Log.e(TAG, "gagal menyiapkan pemasangan", e)
+            Toast.makeText(
+                this,
+                "Gagal menyiapkan pemasangan: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
+            finish()
         }
-        finish()
     }
 
     private companion object {
+        const val TAG = "UpdateInstall"
         const val REQ_INSTALL_PERMISSION = 9201
+        const val REQ_INSTALL_RESULT = 9202
     }
 }
