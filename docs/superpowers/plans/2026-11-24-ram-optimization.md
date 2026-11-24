@@ -60,7 +60,7 @@ Expected: FAIL, unresolved reference `BitmapSampler`.
 
 - [ ] **Step 3: Implementasi `BitmapSampler.sampleSizeFor`**
 
-Loop power-of-two: `sample` mulai 1, naik selama `largest / sample > maxDimension`; kembalikan 1 untuk input non-positif atau bila `largest / 2 < maxDimension` (satu langkah 2x belum capai target).
+Loop power-of-two: `sample` mulai 1, naik selama `largest / sample > maxDimension`; kembalikan 1 untuk input non-positif. Hasil selalu memenuhi batas `maxDimension`.
 
 - [ ] **Step 4: Jalankan test, pastikan GREEN**
 

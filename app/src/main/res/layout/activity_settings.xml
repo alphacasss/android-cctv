@@ -480,7 +480,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:text="Filter objek berjalan di ponsel. Perubahan piksel dari pohon, bayangan, atau lampu diabaikan. Matikan bila kamera sering terlewat (mis. objek sangat jauh atau malam gelap)."
+                        android:text="Filter gerak berjalan di ponsel dengan bitmap kecil agar hemat RAM. Matikan bila notifikasi terlalu sering atau kamera sering terlewat (mis. objek sangat jauh atau malam gelap)."
                         android:textColor="@color/muted"
                         android:textSize="11sp" />
                 </LinearLayout>

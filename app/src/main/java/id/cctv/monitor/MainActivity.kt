@@ -21,6 +21,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
@@ -280,6 +281,8 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
 
     override fun onStop() {
         PublicIp.onIpChanged = null
+        startGeneration++
+        uiHandler.removeCallbacksAndMessages(pageStartToken)
         motionMonitor.stop()
         playerManager?.stopAll()
         super.onStop()
@@ -307,7 +310,12 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
 
         playerManager?.release()
         tiles.clear()
+        pageGrids.clear()
         playerStates.clear()
+        playerMessages.clear()
+        motionActive.clear()
+        motionLabels.clear()
+        motionSnapshotOk.clear()
 
         val manager = PlayerManager(this, prefs)
         manager.listener = this
@@ -406,19 +414,6 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
     private fun buildCameraPages(cameras: List<Camera>, manager: PlayerManager) {
         val pages = if (cameras.isEmpty()) listOf(emptyList()) else cameras.chunked(CAMERAS_PER_PAGE)
         cameraPages = pages
-
-        // Kamera yang dihapus dari konfigurasi tidak boleh meninggalkan SurfaceView.
-        val liveIds = cameras.map { it.id }.toSet()
-        for (id in tiles.keys.toList()) {
-            if (id in liveIds) continue
-            playerManager?.detach(id)
-            tiles.remove(id)
-            playerStates.remove(id)
-            playerMessages.remove(id)
-            motionActive.remove(id)
-            motionLabels.remove(id)
-            motionSnapshotOk.remove(id)
-        }
 
         // Impor cloud atau perubahan konfigurasi bisa selesai saat pengguna
         // sudah berpindah halaman; jangan paksa kembali ke halaman pertama.
@@ -574,12 +569,20 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
 
     private fun startVisiblePage(position: Int, attempt: Int = 0) {
         val manager = playerManager ?: return
+        // Batalkan halaman sebelumnya sebelum apa pun, termasuk retry binding.
+        startGeneration++
+        val generation = startGeneration
+        uiHandler.removeCallbacksAndMessages(pageStartToken)
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
+
         // ViewPager2 bisa memilih halaman sebelum ViewHolder-nya terikat.
         // Tunda beberapa frame supaya SurfaceView tile sudah ada di layout.
         if (!ensurePageBound(position)) {
             if (attempt < 3) {
                 pagerCameras.post {
-                    if (pagerCameras.currentItem == position && playerManager != null) {
+                    if (pagerCameras.currentItem == position &&
+                        lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                    ) {
                         startVisiblePage(position, attempt + 1)
                     }
                 }
@@ -588,11 +591,6 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         }
         // Pasang surface hanya untuk halaman ini sebelum mulai memutar.
         attachVisiblePage(position)
-
-        // Batalkan penjadwalan halaman sebelumnya.
-        startGeneration++
-        val generation = startGeneration
-        uiHandler.removeCallbacksAndMessages(pageStartToken)
 
         val visible = cameraPages.getOrNull(position).orEmpty()
         val visibleIds = visible.map { it.id }.toSet()
@@ -622,7 +620,9 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             render(camera, flags)
 
             val start = Runnable {
-                if (startGeneration == generation) {
+                if (startGeneration == generation &&
+                    lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                ) {
                     val c = camerasById[camera.id] ?: return@Runnable
                     val f = prefs.flags(c.id)
                     if (c.enabled && !f.blocked && hasCredentials(c)) manager.play(c, false)
