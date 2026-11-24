@@ -24,6 +24,13 @@
         app:titleTextColor="@color/bottom_nav_color" />
 
     <item
+        android:id="@+id/nav_playback"
+        android:icon="@drawable/ic_playback"
+        android:title="Playback"
+        app:iconTint="@color/bottom_nav_color"
+        app:titleTextColor="@color/bottom_nav_color" />
+
+    <item
         android:id="@+id/nav_settings"
         android:icon="@drawable/ic_settings"
         android:title="Setelan"

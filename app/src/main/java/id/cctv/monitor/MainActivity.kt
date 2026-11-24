@@ -176,6 +176,10 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
                     startActivity(Intent(this, HistoryActivity::class.java))
                     true
                 }
+                R.id.nav_playback -> {
+                    startActivity(Intent(this, PlaybackActivity::class.java))
+                    true
+                }
                 else -> false
             }
         }
@@ -252,6 +256,10 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             }
             R.id.nav_history -> {
                 startActivity(Intent(this, HistoryActivity::class.java))
+                true
+            }
+            R.id.nav_playback -> {
+                startActivity(Intent(this, PlaybackActivity::class.java))
                 true
             }
             else -> false

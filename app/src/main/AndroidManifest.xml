@@ -43,6 +43,11 @@
             android:label="Riwayat" />
 
         <activity
+            android:name=".PlaybackActivity"
+            android:exported="false"
+            android:label="Playback" />
+
+        <activity
             android:name=".FullscreenPlayerActivity"
             android:exported="false"
             android:theme="@style/Theme.CctvMonitor.Fullscreen" />
