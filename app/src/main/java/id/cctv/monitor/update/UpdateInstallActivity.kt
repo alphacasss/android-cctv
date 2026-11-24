@@ -78,10 +78,12 @@ class UpdateInstallActivity : Activity() {
                 PackageInstaller.SessionParams.MODE_FULL_INSTALL
             )
             val sessionId = installer.createSession(params)
+            val callbackIntent = Intent(this, UpdateInstallResultActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             val callback = PendingIntent.getActivity(
                 this,
                 REQ_INSTALL_RESULT,
-                Intent(this, UpdateInstallResultActivity::class.java),
+                callbackIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val session = installer.openSession(sessionId)

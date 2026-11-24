@@ -22,12 +22,23 @@ class UpdateInstallResultActivity : Activity() {
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             val confirmation = pendingConfirmation()
             if (confirmation != null) {
-                startActivity(confirmation)
-                finish()
+                // Jangan finish() di sini: dialog konfirmasi butuh activity induk yang hidup.
+                startActivityForResult(confirmation, REQ_CONFIRM)
                 return
             }
         }
 
+        showResult(status, detail)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_CONFIRM) return
+        // Status akhir dikirim ulang lewat PendingIntent ke activity ini.
+        finish()
+    }
+
+    private fun showResult(status: Int, detail: String?) {
         Toast.makeText(
             this,
             InstallStatusMessage.forStatus(status, detail),
@@ -45,5 +56,6 @@ class UpdateInstallResultActivity : Activity() {
 
     private companion object {
         const val TAG = "UpdateInstall"
+        const val REQ_CONFIRM = 9203
     }
 }

@@ -59,7 +59,7 @@
 
         <activity
             android:name=".update.UpdateInstallResultActivity"
-            android:exported="true" />
+            android:exported="false" />
 
         <service
             android:name=".away.AwayService"
