@@ -84,7 +84,7 @@ object UpdateNotifications {
             .setSmallIcon(R.drawable.ic_camera)
             .setContentTitle("Pembaruan siap dipasang")
             .setContentText("Versi $version telah diunduh. Ketuk untuk memasang.")
-            .setAutoCancel(true)
+            .setAutoCancel(false)
             .setContentIntent(pending)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
     }
@@ -99,5 +99,9 @@ object UpdateNotifications {
         ensureChannel(context)
         val manager = NotificationManagerCompat.from(context)
         manager.notify(READY_ID, ready(context, file, version).build())
+    }
+
+    fun cancelReady(context: Context) {
+        NotificationManagerCompat.from(context).cancel(READY_ID)
     }
 }
