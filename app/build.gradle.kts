@@ -100,7 +100,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.videolan.android:libvlc-all:3.7.7")
     // Deteksi objek di perangkat (manusia/hewan/kendaraan) untuk filter sensor gerak.
-    implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
 }
