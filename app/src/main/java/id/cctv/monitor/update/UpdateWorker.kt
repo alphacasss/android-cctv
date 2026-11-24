@@ -1,6 +1,8 @@
 package id.cctv.monitor.update
 
 import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ForegroundInfo
@@ -21,12 +23,17 @@ class UpdateWorker(
         val sha256 = inputData.getString(KEY_SHA256)?.takeIf { it.isNotBlank() }
         val manual = inputData.getBoolean(KEY_MANUAL, false)
         UpdateNotifications.ensureChannel(applicationContext)
-        setForegroundAsync(
+        val progressNotification = UpdateNotifications.progress(applicationContext, -1).build()
+        val foreground = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(
                 UpdateNotifications.PROGRESS_ID,
-                UpdateNotifications.progress(applicationContext, -1).build()
+                progressNotification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
             )
-        )
+        } else {
+            ForegroundInfo(UpdateNotifications.PROGRESS_ID, progressNotification)
+        }
+        setForegroundAsync(foreground)
 
         val dir = File(applicationContext.getExternalFilesDir("Updates"), ".")
         val dest = File(dir, "cctv-monitor-$version.apk")
