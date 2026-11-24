@@ -102,4 +102,5 @@ dependencies {
     // Deteksi objek di perangkat (manusia/hewan/kendaraan) untuk filter sensor gerak.
     implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }
