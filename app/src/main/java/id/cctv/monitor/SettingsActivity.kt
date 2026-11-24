@@ -26,6 +26,7 @@ import id.cctv.monitor.net.IsapiClient
 import id.cctv.monitor.net.PublicIp
 import id.cctv.monitor.net.isapiError
 import id.cctv.monitor.update.UpdateManager
+import id.cctv.monitor.update.UpdateNotifications
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -255,6 +256,14 @@ class SettingsActivity : AppCompatActivity() {
                         .setMessage("$notes\n\nUkuran: $size\n\nUnduh memakai paket data tetap diizinkan bila Anda memilih Unduh & pasang.")
                         .setNegativeButton("Nanti", null)
                         .setPositiveButton("Unduh & pasang") { _, _ ->
+                            if (!UpdateNotifications.requestPermission(this@SettingsActivity)) {
+                                Toast.makeText(
+                                    this@SettingsActivity,
+                                    "Izinkan notifikasi dulu agar pemberitahuan pembaruan muncul.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                return@setPositiveButton
+                            }
                             UpdateManager.enqueue(this@SettingsActivity, release, manual = true)
                             Toast.makeText(
                                 this@SettingsActivity,

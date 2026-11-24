@@ -1,13 +1,18 @@
 package id.cctv.monitor.update
 
+import android.Manifest
+import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import id.cctv.monitor.R
 
 /** Notifikasi progres unduh dan notifikasi "siap dipasang". */
@@ -17,6 +22,25 @@ object UpdateNotifications {
     const val PROGRESS_ID = 9100
     const val READY_ID = 9101
     const val EXTRA_PATH = "path"
+    const val REQ_NOTIFY = 9103
+
+    fun hasPermission(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+
+    /** True bila sudah diizinkan; false sambil memunculkan dialog izin. */
+    fun requestPermission(activity: Activity): Boolean {
+        if (hasPermission(activity)) return true
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            REQ_NOTIFY
+        )
+        return false
+    }
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

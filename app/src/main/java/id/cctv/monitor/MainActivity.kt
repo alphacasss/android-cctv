@@ -50,6 +50,7 @@ import id.cctv.monitor.player.PlayerManager
 import id.cctv.monitor.ui.CameraControlSheet
 import id.cctv.monitor.ui.CloudBindingSheet
 import id.cctv.monitor.update.UpdateManager
+import id.cctv.monitor.update.UpdateNotifications
 import kotlinx.coroutines.launch
 import org.videolan.libvlc.util.VLCVideoLayout
 import java.text.SimpleDateFormat
@@ -122,6 +123,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         prefs = app.prefs
         store = app.store
         repository = ControlRepository(prefs, store, app.cloudRepo, app.cloudAuth)
+        if (prefs.autoUpdate) UpdateNotifications.requestPermission(this)
         UpdateManager.maybeCheckOnLaunch(this)
 
         motionMonitor = MotionMonitor(
@@ -733,6 +735,14 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
                     Toast.LENGTH_LONG
                 ).show()
             }
+        } else if (requestCode == UpdateNotifications.REQ_NOTIFY &&
+            grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED
+        ) {
+            Toast.makeText(
+                this,
+                "Izin notifikasi belum aktif. Pemberitahuan pembaruan tidak akan muncul.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
