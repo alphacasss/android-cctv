@@ -14,6 +14,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import id.cctv.monitor.playback.SeekMode
+import id.cctv.monitor.player.RecordingMediaResolver
 import id.cctv.monitor.player.RecordingPlaybackTime
 import id.cctv.monitor.player.SharedVlc
 import org.videolan.libvlc.Media
@@ -26,6 +28,7 @@ class RecordingPlayerActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_FILE_PATH = "recording_file_path"
+        const val EXTRA_MEDIA_URI = "recording_media_uri"
         const val EXTRA_TITLE = "recording_title"
     }
 
@@ -44,6 +47,8 @@ class RecordingPlayerActivity : AppCompatActivity() {
     private var durationMillis = 0L
     private var seeking = false
     private var finished = false
+    private var mediaMrl: String = ""
+    private var seekMode: SeekMode = SeekMode.ENABLED
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,6 +83,14 @@ class RecordingPlayerActivity : AppCompatActivity() {
             )
             insets
         }
+
+        val resolved = RecordingMediaResolver.resolve(
+            intent.getStringExtra(EXTRA_MEDIA_URI),
+            intent.getStringExtra(EXTRA_FILE_PATH)
+        )
+        mediaMrl = resolved.mrl
+        seekMode = resolved.seekMode
+        seekBar.isEnabled = seekMode == SeekMode.ENABLED
 
         titleView.text = intent.getStringExtra(EXTRA_TITLE).orBlankOr("Rekaman")
         findViewById<ImageButton>(R.id.btnRecordingClose).setOnClickListener { finish() }
@@ -147,12 +160,19 @@ class RecordingPlayerActivity : AppCompatActivity() {
     }
 
     private fun initializePlayer() {
-        val path = intent.getStringExtra(EXTRA_FILE_PATH).orEmpty()
-        val file = File(path)
-        if (path.isBlank() || !file.isFile) {
-            Toast.makeText(this, "File rekaman tidak ditemukan", Toast.LENGTH_SHORT).show()
-            finish()
+        if (mediaMrl.isBlank()) {
+            invalidSource("Sumber rekaman tidak ditemukan")
             return
+        }
+        val localFile = if (seekMode == SeekMode.ENABLED) {
+            val file = File(mediaMrl)
+            if (!file.isFile) {
+                invalidSource("File rekaman tidak ditemukan")
+                return
+            }
+            file
+        } else {
+            null
         }
 
         try {
@@ -161,9 +181,18 @@ class RecordingPlayerActivity : AppCompatActivity() {
             active.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT)
             active.setEventListener { event -> onPlayerEvent(event.type) }
 
-            val media = Media(libVlc, Uri.fromFile(file))
-            media.addOption(":no-video-title-show")
-            media.addOption(":file-caching=300")
+            val media = if (localFile != null) {
+                Media(libVlc, Uri.fromFile(localFile)).apply {
+                    addOption(":no-video-title-show")
+                    addOption(":file-caching=300")
+                }
+            } else {
+                Media(libVlc, Uri.parse(mediaMrl)).apply {
+                    addOption(":no-video-title-show")
+                    addOption(":rtsp-tcp")
+                    addOption(":network-caching=300")
+                }
+            }
 
             active.attachViews(videoLayout, null, false, true)
             viewsAttached = true
@@ -174,6 +203,11 @@ class RecordingPlayerActivity : AppCompatActivity() {
             Toast.makeText(this, "Gagal menyiapkan pemutar: ${t.message}", Toast.LENGTH_SHORT).show()
             finish()
         }
+    }
+
+    private fun invalidSource(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        finish()
     }
 
     private fun onPlayerEvent(type: Int) {
