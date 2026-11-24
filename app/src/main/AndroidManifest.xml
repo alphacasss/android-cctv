@@ -48,6 +48,11 @@
             android:theme="@style/Theme.CctvMonitor.Fullscreen" />
 
         <activity
+            android:name=".RecordingPlayerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.CctvMonitor.Fullscreen" />
+
+        <activity
             android:name=".OfficialSdkActivity"
             android:exported="false"
             android:label="Cloud SDK"

@@ -1,11 +1,9 @@
 package id.cctv.monitor
 
 import android.app.Dialog
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.MenuItem
@@ -19,7 +17,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -76,10 +73,14 @@ class HistoryActivity : AppCompatActivity() {
         rvHistory.adapter = adapter
 
         adapter.onItemClick = { item ->
-            if (item.isVideo) {
-                playVideo(item)
-            } else {
-                showPhotoDialog(item)
+            when (HistoryPlaybackRouter.route(item)) {
+                HistoryPlaybackRoute.PLAY_IN_APP -> openRecording(item)
+                HistoryPlaybackRoute.SHOW_PHOTO -> showPhotoDialog(item)
+                HistoryPlaybackRoute.FILE_MISSING -> Toast.makeText(
+                    this,
+                    "File tidak ditemukan atau format tidak didukung",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
 
@@ -199,24 +200,12 @@ class HistoryActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun playVideo(item: MediaItem) {
-        val uri: Uri = try {
-            FileProvider.getUriForFile(this, "${packageName}.files", item.file)
-        } catch (t: Throwable) {
-            Toast.makeText(this, "Gagal membuka file video: ${t.message}", Toast.LENGTH_SHORT).show()
-            return
+    private fun openRecording(item: MediaItem) {
+        val intent = Intent(this, RecordingPlayerActivity::class.java).apply {
+            putExtra(RecordingPlayerActivity.EXTRA_FILE_PATH, item.file.absolutePath)
+            putExtra(RecordingPlayerActivity.EXTRA_TITLE, "${item.cameraName} • ${item.name}")
         }
-
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "video/*")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
-        try {
-            startActivity(intent)
-        } catch (e: ActivityNotFoundException) {
-            Toast.makeText(this, "Tidak ada pemutar video di perangkat. Gunakan tombol Bagikan.", Toast.LENGTH_LONG).show()
-        }
+        startActivity(intent)
     }
 
     private fun showPhotoDialog(item: MediaItem) {
