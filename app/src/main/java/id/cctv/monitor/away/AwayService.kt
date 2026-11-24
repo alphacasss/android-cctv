@@ -16,6 +16,7 @@ import id.cctv.monitor.data.AppPrefs
 import id.cctv.monitor.data.MediaSaver
 import id.cctv.monitor.motion.MotionMonitor
 import id.cctv.monitor.motion.ObjectFilter
+import id.cctv.monitor.util.BitmapSampler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -114,8 +115,17 @@ class AwayService : Service(), MotionMonitor.Listener {
             null
         }
 
+        // Notifikasi hanya butuh ikon kecil; jangan decode JPEG resolusi penuh.
         val bitmap: Bitmap? = try {
-            BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, bounds)
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = BitmapSampler.sampleSizeFor(
+                    bounds.outWidth, bounds.outHeight, 256
+                )
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
+            BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, options)
         } catch (t: Throwable) {
             null
         }
