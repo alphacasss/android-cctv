@@ -17,15 +17,7 @@ internal object SharedVlc {
         return synchronized(this) {
             instance ?: LibVLC(
                 context.applicationContext,
-                arrayListOf(
-                    "--rtsp-tcp",
-                    "--no-audio",
-                    "--no-video-title-show",
-                    "--network-caching=300",
-                    "--live-caching=300",
-                    "--drop-late-frames",
-                    "--skip-frames"
-                )
+                VlcLaunchOptions.base()
             ).also { instance = it }
         }
     }

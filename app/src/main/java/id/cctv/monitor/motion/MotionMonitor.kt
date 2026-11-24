@@ -50,7 +50,7 @@ class MotionMonitor(
         const val HOLD_MS = 8_000L
         const val FAIL_BACKOFF_MS = 30_000L
         const val LOG_INTERVAL_MS = 10_000L
-        const val CLASSIFY_WIDTH = 640
+        const val CLASSIFY_WIDTH = 320
         const val CLASSIFY_INTERVAL_MS = 12_000L
     }
 

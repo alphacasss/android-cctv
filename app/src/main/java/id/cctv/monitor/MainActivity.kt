@@ -21,6 +21,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
@@ -81,6 +82,7 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
 
     private var playerManager: PlayerManager? = null
     private val tiles = LinkedHashMap<Int, Tile>()
+    private val pageGrids = HashMap<Int, GridLayout>()
     private var camerasById: Map<Int, Camera> = emptyMap()
     private val playerStates = HashMap<Int, PlayerManager.State>()
     private val playerMessages = HashMap<Int, String?>()
@@ -279,6 +281,8 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
 
     override fun onStop() {
         PublicIp.onIpChanged = null
+        startGeneration++
+        uiHandler.removeCallbacksAndMessages(pageStartToken)
         motionMonitor.stop()
         playerManager?.stopAll()
         super.onStop()
@@ -306,7 +310,12 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
 
         playerManager?.release()
         tiles.clear()
+        pageGrids.clear()
         playerStates.clear()
+        playerMessages.clear()
+        motionActive.clear()
+        motionLabels.clear()
+        motionSnapshotOk.clear()
 
         val manager = PlayerManager(this, prefs)
         manager.listener = this
@@ -405,28 +414,30 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
     private fun buildCameraPages(cameras: List<Camera>, manager: PlayerManager) {
         val pages = if (cameras.isEmpty()) listOf(emptyList()) else cameras.chunked(CAMERAS_PER_PAGE)
         cameraPages = pages
+
         // Impor cloud atau perubahan konfigurasi bisa selesai saat pengguna
         // sudah berpindah halaman; jangan paksa kembali ke halaman pertama.
         val active = pagerCameras.currentItem.coerceIn(0, pages.lastIndex)
-        val pageViews = pages.map { pageCams -> createPageView(pageCams, manager) }
-
+        pageGrids.clear()
         pagerCameras.adapter = object : RecyclerView.Adapter<PageHolder>() {
             override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageHolder {
-                // Not used; pages are pre-created to keep VLC surfaces attached.
                 val view = layoutInflater.inflate(R.layout.page_camera_grid, parent, false)
                 return PageHolder(view)
             }
 
-            override fun getItemCount(): Int = pageViews.size
+            override fun getItemCount(): Int = cameraPages.size
 
             override fun onBindViewHolder(holder: PageHolder, position: Int) {
-                val page = pageViews[position]
-                val container = holder.itemView as? ViewGroup ?: return
-                if (page.parent !== container) {
-                    (page.parent as? ViewGroup)?.removeView(page)
-                    container.removeAllViews()
-                    container.addView(page)
-                }
+                val grid = holder.itemView as? GridLayout ?: return
+                pageGrids[position] = grid
+                bindPage(grid, cameraPages[position])
+            }
+
+            override fun onViewRecycled(holder: PageHolder) {
+                val recycled = holder.itemView
+                val stale = pageGrids.filter { it.value === recycled }.map { it.key }
+                stale.forEach { pageGrids.remove(it) }
+                super.onViewRecycled(holder)
             }
         }
         pagerCameras.setCurrentItem(active, false)
@@ -436,44 +447,63 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         pagerCameras.doOnLayout { adjustPagerHeightToFit() }
     }
 
-    private fun createPageView(pageCameras: List<Camera>, manager: PlayerManager): View {
-        val page = layoutInflater.inflate(R.layout.page_camera_grid, pagerCameras, false) as GridLayout
-        val rows = if (pageCameras.isEmpty()) 1 else
+    /** Pasang tile hanya saat halaman dipakai adapter, bukan di awal. */
+    private fun bindPage(container: ViewGroup, pageCameras: List<Camera>) {
+        val grid = container as? GridLayout ?: return
+        grid.columnCount = GRID_COLUMNS
+        grid.rowCount = if (pageCameras.isEmpty()) 1 else
             kotlin.math.ceil(pageCameras.size / GRID_COLUMNS.toDouble()).toInt().coerceAtLeast(1)
-        page.columnCount = GRID_COLUMNS
-        page.rowCount = rows
+        grid.removeAllViews()
         pageCameras.forEachIndexed { index, camera ->
-            val tileView = layoutInflater.inflate(R.layout.item_camera, page, false)
-            val row = index / GRID_COLUMNS
-            val col = index % GRID_COLUMNS
+            val tile = tiles[camera.id] ?: createTile(camera).also { tiles[camera.id] = it }
+            (tile.root.parent as? ViewGroup)?.removeView(tile.root)
             val params = GridLayout.LayoutParams().apply {
                 width = 0
                 height = GridLayout.LayoutParams.WRAP_CONTENT
-                columnSpec = GridLayout.spec(col, 1, 1f)
-                rowSpec = GridLayout.spec(row, 1, 1f)
+                columnSpec = GridLayout.spec(index % GRID_COLUMNS, 1, 1f)
+                rowSpec = GridLayout.spec(index / GRID_COLUMNS, 1, 1f)
                 setMargins(dp(4), dp(4), dp(4), dp(4))
             }
-            page.addView(tileView, params)
-
-            val tile = Tile(
-                root = tileView,
-                video = tileView.findViewById(R.id.videoLayout),
-                cloudSurface = tileView.findViewById(R.id.cloudSurface),
-                name = tileView.findViewById(R.id.tvCameraName),
-                status = tileView.findViewById(R.id.tvStatus),
-                overlay = tileView.findViewById(R.id.tvOverlay),
-                menu = tileView.findViewById(R.id.btnMenu),
-                sensorChip = tileView.findViewById(R.id.tvSensorChip),
-                motionBadge = tileView.findViewById(R.id.tvMotionBadge)
-            )
-            tiles[camera.id] = tile
-
+            grid.addView(tile.root, params)
             tile.name.text = camera.displayName
             tile.root.alpha = if (camera.enabled) 1f else 0.55f
-            tile.menu.setOnClickListener { showControls(camera.id) }
-            tile.root.setOnClickListener { openFullscreen(camera.id) }
         }
-        return page
+    }
+
+    private fun createTile(camera: Camera): Tile {
+        val view = layoutInflater.inflate(R.layout.item_camera, pagerCameras, false)
+        val tile = Tile(
+            root = view,
+            video = view.findViewById(R.id.videoLayout),
+            cloudSurface = view.findViewById(R.id.cloudSurface),
+            name = view.findViewById(R.id.tvCameraName),
+            status = view.findViewById(R.id.tvStatus),
+            overlay = view.findViewById(R.id.tvOverlay),
+            menu = view.findViewById(R.id.btnMenu),
+            sensorChip = view.findViewById(R.id.tvSensorChip),
+            motionBadge = view.findViewById(R.id.tvMotionBadge)
+        )
+        tile.menu.setOnClickListener { showControls(camera.id) }
+        tile.root.setOnClickListener { openFullscreen(camera.id) }
+        return tile
+    }
+
+    /** Pastikan halaman terpilih punya tile sebelum surface dipasang ke player. */
+    private fun ensurePageBound(position: Int): Boolean {
+        val grid = pageGrids[position] ?: return false
+        // ViewHolder bisa dihancurkan, bukan didaur ulang. Jangan pasang tile ke
+        // grid lepas yang sudah tidak ada di pager.
+        var current: View = grid
+        while (true) {
+            val parent = current.parent as? View ?: return false
+            if (parent === pagerCameras) break
+            current = parent
+        }
+        val expected = cameraPages.getOrNull(position).orEmpty()
+        val needsBind = grid.childCount != expected.size ||
+            expected.any { tiles[it.id]?.root?.parent !== grid }
+        if (needsBind) bindPage(grid, expected)
+        return true
     }
 
     /**
@@ -537,15 +567,30 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
         startVisiblePage(pagerCameras.currentItem)
     }
 
-    private fun startVisiblePage(position: Int) {
+    private fun startVisiblePage(position: Int, attempt: Int = 0) {
         val manager = playerManager ?: return
-        // Pasang surface hanya untuk halaman ini sebelum mulai memutar.
-        attachVisiblePage(position)
-
-        // Batalkan penjadwalan halaman sebelumnya.
+        // Batalkan halaman sebelumnya sebelum apa pun, termasuk retry binding.
         startGeneration++
         val generation = startGeneration
         uiHandler.removeCallbacksAndMessages(pageStartToken)
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
+
+        // ViewPager2 bisa memilih halaman sebelum ViewHolder-nya terikat.
+        // Tunda beberapa frame supaya SurfaceView tile sudah ada di layout.
+        if (!ensurePageBound(position)) {
+            if (attempt < 3) {
+                pagerCameras.post {
+                    if (pagerCameras.currentItem == position &&
+                        lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                    ) {
+                        startVisiblePage(position, attempt + 1)
+                    }
+                }
+            }
+            return
+        }
+        // Pasang surface hanya untuk halaman ini sebelum mulai memutar.
+        attachVisiblePage(position)
 
         val visible = cameraPages.getOrNull(position).orEmpty()
         val visibleIds = visible.map { it.id }.toSet()
@@ -575,7 +620,9 @@ class MainActivity : AppCompatActivity(), PlayerManager.Listener {
             render(camera, flags)
 
             val start = Runnable {
-                if (startGeneration == generation) {
+                if (startGeneration == generation &&
+                    lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                ) {
                     val c = camerasById[camera.id] ?: return@Runnable
                     val f = prefs.flags(c.id)
                     if (c.enabled && !f.blocked && hasCredentials(c)) manager.play(c, false)
