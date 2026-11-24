@@ -21,3 +21,4 @@ dist/
 
 # Ledger lokal Superpowers
 .superpowers/
+.worktrees/
