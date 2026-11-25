@@ -47,6 +47,18 @@ class PlaybackTimelineTest {
         assertEquals(1, PlaybackTimeline.step(2, 1, 1))
     }
 
+    @Test fun safePicked_atEndFallsBackToStart() {
+        assertEquals(continuous.startMillis, PlaybackTimeline.safePicked(continuous, continuous.endMillis))
+        assertEquals(
+            continuous.startMillis,
+            PlaybackTimeline.safePicked(continuous, continuous.endMillis + 5_000L)
+        )
+        assertEquals(
+            dayStart + 1_800_000L,
+            PlaybackTimeline.safePicked(continuous, dayStart + 1_800_000L)
+        )
+    }
+
     @Test fun pickedMillis_clampsAndSeekOffset() {
         val picked = PlaybackTimeline.pickedMillis(continuous, continuous.startMillis - 5_000L)
         assertEquals(continuous.startMillis, picked)

@@ -40,7 +40,8 @@ class PlaybackTimelineView @JvmOverloads constructor(
         barPaint.color = ContextCompat.getColor(context, R.color.stroke)
         canvas.drawRect(0f, top, w, bottom, barPaint)
 
-        clips.forEach { clip ->
+        // Continuous dulu, event di atasnya supaya warna event tidak ketutup.
+        clips.sortedBy { it.eventKind != PlaybackEventKind.CONTINUOUS }.forEach { clip ->
             val left = (PlaybackTimeline.ratio(clip.startMillis, dayStart, dayEnd) * w)
                 .coerceIn(0f, w)
             val right = (PlaybackTimeline.ratio(clip.endMillis, dayStart, dayEnd) * w)

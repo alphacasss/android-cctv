@@ -53,6 +53,16 @@ object PlaybackTimeline {
     fun pickedMillis(clip: RecordingClip, requested: Long): Long =
         requested.coerceIn(clip.startMillis, clip.endMillis)
 
+    /** Tap persis di ujung klip jangan sampai bikin query RTSP start == end. */
+    fun safePicked(clip: RecordingClip, requested: Long): Long {
+        val picked = pickedMillis(clip, requested)
+        return if (picked >= clip.endMillis && clip.endMillis > clip.startMillis) {
+            clip.startMillis
+        } else {
+            picked
+        }
+    }
+
     fun seekOffset(clip: RecordingClip, requested: Long): Long =
         (pickedMillis(clip, requested) - clip.startMillis).coerceAtLeast(0L)
 

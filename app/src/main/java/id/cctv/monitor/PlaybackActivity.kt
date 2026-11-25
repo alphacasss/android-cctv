@@ -284,7 +284,7 @@ class PlaybackActivity : AppCompatActivity() {
 
     private fun openAt(clip: RecordingClip, requested: Long) {
         val context = searchContext ?: return
-        val picked = PlaybackTimeline.pickedMillis(clip, requested)
+        val picked = PlaybackTimeline.safePicked(clip, requested)
         val offset = PlaybackTimeline.seekOffset(clip, picked)
         val title = PlaybackUi.rowLabel(clip, context.camera, TimeZone.getDefault())
 
