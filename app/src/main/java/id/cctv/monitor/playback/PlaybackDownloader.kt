@@ -49,13 +49,22 @@ class PlaybackDownloader(private val cacheDir: File) {
             if (response.code == 404) client.post(DOWNLOAD_PATH_NO_SLASH, body) else response
         }
 
-    private fun requestXml(clip: RecordingClip): String =
-        """<?xml version="1.0" encoding="UTF-8"?>
-<downloadRequest>
-  <trackID>${clip.trackId}</trackID>
-  <startTime>${PlaybackTime.xmlStamp(clip.startMillis)}</startTime>
-  <endTime>${PlaybackTime.xmlStamp(clip.endMillis)}</endTime>
+    private fun requestXml(clip: RecordingClip): String {
+        if (clip.playbackUri.isBlank()) {
+            throw IllegalStateException("Perangkat tidak mengembalikan playbackURI rekaman.")
+        }
+        return """<?xml version="1.0" encoding="UTF-8"?>
+<downloadRequest version="1.0" xmlns="http://www.isapi.org/ver20/XMLSchema">
+  <playbackURI>${escapeXml(clip.playbackUri)}</playbackURI>
 </downloadRequest>"""
+    }
+
+    private fun escapeXml(value: String) = value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&apos;")
 
     private companion object {
         const val DOWNLOAD_PATH = "/ISAPI/ContentMgmt/download"

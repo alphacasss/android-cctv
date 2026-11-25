@@ -21,6 +21,7 @@ class PlaybackDownloaderTest {
 
     @Test fun download_writesClipAndClearRemovesIt() {
         val cacheDir = createTempDirectory("nvr-playback").toFile()
+        val uri = "rtsp://192.168.100.34/Streaming/tracks/101/?starttime=20261123T165250Z&endtime=20261123T170946Z"
         val server = ServerSocket(0, 4, InetAddress.getByName("127.0.0.1"))
         val requests = Collections.synchronizedList(mutableListOf<String>())
         val executor = Executors.newSingleThreadExecutor()
@@ -30,7 +31,9 @@ class PlaybackDownloaderTest {
                     val (line, body) = readRequest(socket)
                     requests += line
                     if (index == 0) {
-                        assertTrue(body.contains("<trackID>101</trackID>"))
+                        assertTrue(body.contains("<playbackURI>rtsp://192.168.100.34/Streaming/tracks/101/?starttime=20261123T165250Z&amp;endtime=20261123T170946Z</playbackURI>"))
+                        assertTrue(body.contains("xmlns=\"http://www.isapi.org/ver20/XMLSchema\""))
+                        assertFalse(body.contains("<trackID>"))
                         respond(socket, "<DownloadResponse><downloadId>clip-42</downloadId></DownloadResponse>")
                     } else {
                         respond(socket, "MP4-BYTES")
@@ -41,7 +44,7 @@ class PlaybackDownloaderTest {
         try {
             val endpoint = Endpoint("127.0.0.1", server.localPort, 554, remote = false)
             val downloader = PlaybackDownloader(cacheDir)
-            val clip = RecordingClip(101, 1_700_000_000_000L, 1_700_000_300_000L)
+            val clip = RecordingClip(101, 1_700_000_000_000L, 1_700_000_300_000L, playbackUri = uri)
             val file = runBlocking { downloader.download(clip, endpoint, "u", "p").getOrThrow() }
             served.get(5, TimeUnit.SECONDS)
 
@@ -77,7 +80,10 @@ class PlaybackDownloaderTest {
         try {
             val endpoint = Endpoint("127.0.0.1", server.localPort, 554, remote = false)
             val downloader = PlaybackDownloader(cacheDir)
-            val clip = RecordingClip(101, 1_700_000_000_000L, 1_700_000_300_000L)
+            val clip = RecordingClip(
+                101, 1_700_000_000_000L, 1_700_000_300_000L,
+                playbackUri = "rtsp://nvr/test"
+            )
             assertTrue(runBlocking { downloader.download(clip, endpoint, "u", "p").isFailure })
             served.get(5, TimeUnit.SECONDS)
             assertFalse(PlaybackCache.fileFor(cacheDir, clip).exists())
@@ -86,6 +92,16 @@ class PlaybackDownloaderTest {
             executor.shutdownNow()
             cacheDir.deleteRecursively()
         }
+    }
+
+    @Test fun download_blankPlaybackUri_failsClearly() {
+        val cacheDir = createTempDirectory("nvr-playback").toFile()
+        val downloader = PlaybackDownloader(cacheDir)
+        val clip = RecordingClip(101, 1_700_000_000_000L, 1_700_000_300_000L)
+        val endpoint = Endpoint("127.0.0.1", 1, 554, remote = false)
+        val error = runBlocking { downloader.download(clip, endpoint, "u", "p").exceptionOrNull() }
+        assertTrue(error?.message?.contains("playbackURI") == true)
+        cacheDir.deleteRecursively()
     }
 
     private fun readRequest(socket: Socket): Pair<String, String> {
