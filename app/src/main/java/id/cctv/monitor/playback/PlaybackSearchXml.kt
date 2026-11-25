@@ -33,7 +33,9 @@ object PlaybackSearchXml {
                 val trackId = item.text("trackID")?.toIntOrNull() ?: continue
                 val startMillis = item.text("startTime")?.let(PlaybackTime::parseStamp) ?: continue
                 val endMillis = item.text("endTime")?.let(PlaybackTime::parseStamp) ?: continue
-                clips += RecordingClip(trackId, startMillis, endMillis)
+                val playbackUri = item.text("playbackURI").orEmpty()
+                val eventKind = PlaybackEventKind.from(item.text("eventType") ?: item.text("event"))
+                clips += RecordingClip(trackId, startMillis, endMillis, playbackUri, eventKind)
             }
             clips.sortedBy { it.startMillis }
         } catch (e: Exception) {

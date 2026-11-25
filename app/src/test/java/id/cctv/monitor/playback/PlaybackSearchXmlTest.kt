@@ -33,4 +33,25 @@ class PlaybackSearchXmlTest {
                 .matches(id)
         )
     }
+
+    @Test fun parse_readsPlaybackUriAndEventKind() {
+        val xml = """<?xml version="1.0"?><CMSearchResult><matchList>
+          <searchMatchItem><trackID>101</trackID>
+            <playbackURI>rtsp://nvr/tracks/101/?a=1&amp;b=2</playbackURI>
+            <eventType>person</eventType>
+            <timeSpan><startTime>2026-11-23T16:52:50Z</startTime>
+              <endTime>2026-11-23T17:09:46Z</endTime></timeSpan>
+          </searchMatchItem>
+        </matchList></CMSearchResult>"""
+        val clip = PlaybackSearchXml.parse(xml).single()
+        assertEquals("rtsp://nvr/tracks/101/?a=1&b=2", clip.playbackUri)
+        assertEquals(PlaybackEventKind.PERSON, clip.eventKind)
+    }
+
+    @Test fun eventKind_fromMapsUnknownToContinuous() {
+        assertEquals(PlaybackEventKind.PERSON, PlaybackEventKind.from("Face"))
+        assertEquals(PlaybackEventKind.VEHICLE, PlaybackEventKind.from("vehicle"))
+        assertEquals(PlaybackEventKind.EVENT, PlaybackEventKind.from("motion"))
+        assertEquals(PlaybackEventKind.CONTINUOUS, PlaybackEventKind.from(null))
+    }
 }
