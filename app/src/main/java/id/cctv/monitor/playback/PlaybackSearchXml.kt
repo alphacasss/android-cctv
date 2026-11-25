@@ -9,6 +9,8 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 object PlaybackSearchXml {
 
+    private val dtdMarker = Regex("""<!\s*(?:DOCTYPE|ENTITY)\b""", RegexOption.IGNORE_CASE)
+
     fun request(trackId: Int, startUtc: String, endUtc: String): String =
         """<?xml version="1.0" encoding="UTF-8"?>
 <CMSearchDescription>
@@ -22,18 +24,29 @@ object PlaybackSearchXml {
 </CMSearchDescription>"""
 
     fun parse(body: String): List<RecordingClip> {
-        if (body.isBlank()) return emptyList()
+        // Android tidak menjamin semua fitur XML di bawah didukung, jadi DTD/entity
+        // ditolak eksplisit di sini sebelum parser dipanggil.
+        if (body.isBlank() || dtdMarker.containsMatchIn(body)) return emptyList()
         return try {
-            val factory = DocumentBuilderFactory.newInstance().apply {
-                isNamespaceAware = false
-                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-                setFeature("http://xml.org/sax/features/external-general-entities", false)
-                setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-                setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
-                isXIncludeAware = false
-                isExpandEntityReferences = false
+            val factory = DocumentBuilderFactory.newInstance()
+            // Satu fitur yang tidak didukung tidak boleh menggagalkan seluruh parse.
+            safeConfig { factory.isNamespaceAware = false }
+            safeConfig { factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true) }
+            safeConfig {
+                factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
             }
+            safeConfig {
+                factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
+            }
+            safeConfig {
+                factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+            }
+            safeConfig {
+                factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+            }
+            safeConfig { factory.isXIncludeAware = false }
+            safeConfig { factory.isExpandEntityReferences = false }
+
             val document = factory.newDocumentBuilder()
                 .parse(InputSource(StringReader(body.removePrefix("\uFEFF"))))
             val clips = mutableListOf<RecordingClip>()
@@ -51,6 +64,14 @@ object PlaybackSearchXml {
             clips.sortedBy { it.startMillis }
         } catch (e: Exception) {
             emptyList()
+        }
+    }
+
+    private inline fun safeConfig(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Exception) {
+            // Parser Android/Java bisa menolak fitur tertentu; proteksi utama ada di dtdMarker.
         }
     }
 

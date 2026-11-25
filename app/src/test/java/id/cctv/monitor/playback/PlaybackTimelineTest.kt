@@ -66,6 +66,32 @@ class PlaybackTimelineTest {
         )
     }
 
+    @Test fun clipAt_exactBoundaryChoosesLaterClip() {
+        val first = RecordingClip(101, dayStart, dayStart + 3_600_000L)
+        val second = RecordingClip(101, dayStart + 3_600_000L, dayStart + 7_200_000L)
+        assertEquals(
+            second,
+            PlaybackTimeline.clipAt(
+                listOf(first, second),
+                PlaybackTimeline.ratio(dayStart + 3_600_000L, dayStart, dayEnd),
+                dayStart,
+                dayEnd
+            )
+        )
+    }
+
+    @Test fun stepState_contiguousClipsAdvanceTwice() {
+        val first = RecordingClip(101, dayStart, dayStart + 3_600_000L)
+        val second = RecordingClip(101, dayStart + 3_600_000L, dayStart + 7_200_000L)
+        val third = RecordingClip(101, dayStart + 7_200_000L, dayStart + 10_800_000L)
+        val clips = listOf(first, second, third)
+        val one = PlaybackTimeline.stepState(clips, dayStart, dayStart, dayEnd, 1)!!
+        assertEquals(1, one.first)
+        val two = PlaybackTimeline.stepState(clips, one.second, dayStart, dayEnd, 1)!!
+        assertEquals(2, two.first)
+        assertEquals(third.startMillis, two.second)
+    }
+
     @Test fun stepState_twoConsecutiveStepsAdvance() {
         val laterA = RecordingClip(101, dayStart + 10_800_000L, dayStart + 10_900_000L)
         val laterB = RecordingClip(101, dayStart + 21_600_000L, dayStart + 21_700_000L)

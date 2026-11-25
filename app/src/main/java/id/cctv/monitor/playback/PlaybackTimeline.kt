@@ -18,13 +18,11 @@ object PlaybackTimeline {
         if (clips.isEmpty()) return null
         val span = (dayEnd - dayStart).coerceAtLeast(0L)
         val millis = dayStart + (ratio.coerceIn(0f, 1f) * span.toFloat()).toLong()
-        val covering = clips.filter { millis in it.startMillis..it.endMillis }
-        if (covering.isNotEmpty()) {
-            return covering.sortedWith(
-                compareByDescending<RecordingClip> { priority(it.eventKind) }
-                    .thenBy { it.endMillis - it.startMillis }
-            ).first()
-        }
+        // Interval setengah terbuka: tepat di batas klip pilih klip berikutnya.
+        val covering = clips.filter { millis >= it.startMillis && millis < it.endMillis }
+        preferred(covering)?.let { return it }
+        val endedHere = clips.filter { it.endMillis == millis }
+        preferred(endedHere)?.let { return it }
         return clips.minByOrNull { distance(it, millis) }
     }
 
@@ -79,6 +77,12 @@ object PlaybackTimeline {
 
     fun seekOffset(clip: RecordingClip, requested: Long): Long =
         (pickedMillis(clip, requested) - clip.startMillis).coerceAtLeast(0L)
+
+    private fun preferred(candidates: List<RecordingClip>): RecordingClip? =
+        candidates.sortedWith(
+            compareByDescending<RecordingClip> { priority(it.eventKind) }
+                .thenBy { it.endMillis - it.startMillis }
+        ).firstOrNull()
 
     private fun priority(kind: PlaybackEventKind): Int = when (kind) {
         PlaybackEventKind.PERSON -> 3

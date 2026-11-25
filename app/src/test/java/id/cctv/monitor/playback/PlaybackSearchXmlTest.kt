@@ -29,6 +29,16 @@ class PlaybackSearchXmlTest {
         assertEquals(0, PlaybackSearchXml.parse(xml).size)
     }
 
+    @Test fun parse_rejectsEntityDeclaration() {
+        val xml = """<?xml version="1.0"?><CMSearchResult><!ENTITY cid "101"><matchList>
+          <searchMatchItem><trackID>&cid;</trackID><timeSpan>
+            <startTime>2026-11-23T16:52:50Z</startTime>
+            <endTime>2026-11-23T17:09:46Z</endTime>
+          </timeSpan></searchMatchItem>
+        </matchList></CMSearchResult>"""
+        assertEquals(0, PlaybackSearchXml.parse(xml).size)
+    }
+
     @Test fun parse_skipsInvalidTimeSpan() {
         val xml = """<?xml version="1.0"?><CMSearchResult><matchList>
           <searchMatchItem><trackID>201</trackID><timeSpan>
@@ -47,6 +57,7 @@ class PlaybackSearchXmlTest {
         val xml = PlaybackSearchXml.request(101, "2026-11-23T17:00:00Z", "2026-11-24T17:00:00Z")
         assertEquals(true, xml.contains("<startTime>2026-11-23T17:00:00Z</startTime>"))
         assertEquals(true, xml.contains("<endTime>2026-11-24T17:00:00Z</endTime>"))
+        assertEquals(true, xml.contains("<trackID>101</trackID>"))
     }
 
     @Test fun request_usesGuidSearchId() {
