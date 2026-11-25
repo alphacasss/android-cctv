@@ -2,6 +2,9 @@ package id.cctv.monitor
 
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.View
 import android.view.WindowManager
 import android.widget.ImageButton
@@ -30,6 +33,8 @@ class RecordingPlayerActivity : AppCompatActivity() {
         const val EXTRA_FILE_PATH = "recording_file_path"
         const val EXTRA_MEDIA_URI = "recording_media_uri"
         const val EXTRA_TITLE = "recording_title"
+        const val EXTRA_START_MILLIS = "recording_start_millis"
+        const val EXTRA_END_MILLIS = "recording_end_millis"
     }
 
     private lateinit var videoLayout: VLCVideoLayout
@@ -49,6 +54,18 @@ class RecordingPlayerActivity : AppCompatActivity() {
     private var finished = false
     private var mediaMrl: String = ""
     private var seekMode: SeekMode = SeekMode.ENABLED
+    private var playingSeen = false
+    private var expectedDurationMillis = 0L
+    private var elapsedMillis = 0L
+    private var lastTickAt = 0L
+
+    private val clock = Handler(Looper.getMainLooper())
+    private val timeTick = object : Runnable {
+        override fun run() {
+            tickTime()
+            clock.postDelayed(this, 500L)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -91,6 +108,15 @@ class RecordingPlayerActivity : AppCompatActivity() {
         mediaMrl = resolved.mrl
         seekMode = resolved.seekMode
         seekBar.isEnabled = seekMode == SeekMode.ENABLED
+        val clipStart = intent.getLongExtra(EXTRA_START_MILLIS, 0L)
+        val clipEnd = intent.getLongExtra(EXTRA_END_MILLIS, 0L)
+        if (clipEnd > clipStart) {
+            expectedDurationMillis = clipEnd - clipStart
+        }
+        if (seekMode == SeekMode.DISABLED && expectedDurationMillis > 0L) {
+            durationMillis = expectedDurationMillis
+            durationView.text = RecordingPlaybackTime.format(durationMillis)
+        }
 
         titleView.text = intent.getStringExtra(EXTRA_TITLE).orBlankOr("Rekaman")
         findViewById<ImageButton>(R.id.btnRecordingClose).setOnClickListener { finish() }
@@ -144,9 +170,12 @@ class RecordingPlayerActivity : AppCompatActivity() {
         super.onStart()
         if (player == null) initializePlayer()
         if (!finished && player?.isPlaying == false) player?.play()
+        clock.removeCallbacks(timeTick)
+        clock.post(timeTick)
     }
 
     override fun onStop() {
+        clock.removeCallbacks(timeTick)
         try {
             player?.pause()
         } catch (_: Throwable) {
@@ -179,7 +208,9 @@ class RecordingPlayerActivity : AppCompatActivity() {
             val libVlc = SharedVlc.get(applicationContext)
             val active = MediaPlayer(libVlc)
             active.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT)
-            active.setEventListener { event -> onPlayerEvent(event.type) }
+            active.setEventListener { event ->
+                runOnUiThread { onPlayerEvent(event.type) }
+            }
 
             val media = if (localFile != null) {
                 Media(libVlc, Uri.fromFile(localFile)).apply {
@@ -210,12 +241,45 @@ class RecordingPlayerActivity : AppCompatActivity() {
         finish()
     }
 
+    /** VLC replay RTSP sering tidak memancarkan TimeChanged; baca langsung, lalu pakai jam lokal. */
+    private fun tickTime() {
+        val active = player ?: return
+        if (finished) return
+        val now = SystemClock.elapsedRealtime()
+        val vlcLength = runCatching { active.length }.getOrDefault(0L)
+        if (vlcLength > 0L && vlcLength != durationMillis) {
+            durationMillis = vlcLength
+            durationView.text = RecordingPlaybackTime.format(durationMillis)
+        }
+        val vlcTime = runCatching { active.time }.getOrDefault(0L)
+        if (vlcTime > 0L) {
+            elapsedMillis = vlcTime
+        } else if (active.isPlaying && lastTickAt > 0L) {
+            elapsedMillis += now - lastTickAt
+        }
+        lastTickAt = now
+        if (expectedDurationMillis > 0L) {
+            elapsedMillis = elapsedMillis.coerceIn(0L, expectedDurationMillis)
+        }
+        currentView.text = RecordingPlaybackTime.format(elapsedMillis)
+        seekBar.progress = if (durationMillis > 0L) {
+            ((elapsedMillis.toFloat() / durationMillis.toFloat()) * seekBar.max).toInt()
+                .coerceIn(0, seekBar.max)
+        } else {
+            0
+        }
+    }
+
     private fun onPlayerEvent(type: Int) {
         when (type) {
             MediaPlayer.Event.Opening,
-            MediaPlayer.Event.Buffering -> showOverlay("Memuat…")
+            MediaPlayer.Event.Buffering -> {
+                if (!playingSeen) showOverlay("Memuat…")
+            }
 
-            MediaPlayer.Event.Playing -> {
+            MediaPlayer.Event.Playing,
+            MediaPlayer.Event.Vout -> {
+                playingSeen = true
                 finished = false
                 hideOverlay()
                 updatePlayPauseIcon()
@@ -224,8 +288,12 @@ class RecordingPlayerActivity : AppCompatActivity() {
             MediaPlayer.Event.Paused -> updatePlayPauseIcon()
 
             MediaPlayer.Event.LengthChanged -> {
-                durationMillis = player?.length ?: 0L
-                durationView.text = RecordingPlaybackTime.format(durationMillis)
+                val length = player?.length ?: 0L
+                // RTSP replay bisa mengirim LengthChanged(0); jangan timpa durasi klip.
+                if (length > 0L) {
+                    durationMillis = length
+                    durationView.text = RecordingPlaybackTime.format(durationMillis)
+                }
             }
 
             MediaPlayer.Event.TimeChanged -> {
@@ -241,6 +309,7 @@ class RecordingPlayerActivity : AppCompatActivity() {
             }
 
             MediaPlayer.Event.EndReached -> {
+                playingSeen = false
                 finished = true
                 currentView.text = RecordingPlaybackTime.format(durationMillis)
                 seekBar.progress = seekBar.max
@@ -248,7 +317,10 @@ class RecordingPlayerActivity : AppCompatActivity() {
                 showOverlay("Selesai")
             }
 
-            MediaPlayer.Event.EncounteredError -> showOverlay("Gagal memutar rekaman")
+            MediaPlayer.Event.EncounteredError -> {
+                playingSeen = false
+                showOverlay("Gagal memutar rekaman")
+            }
         }
     }
 

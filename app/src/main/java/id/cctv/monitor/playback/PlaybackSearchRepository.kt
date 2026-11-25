@@ -17,7 +17,11 @@ class PlaybackSearchRepository(
         val (dayStart, dayEnd) = PlaybackTime.dayRange(dayMillis, zone)
         val startUtc = PlaybackTime.utcStamp(dayStart)
         val endUtc = PlaybackTime.utcStamp(dayEnd)
-        val body = PlaybackSearchXml.request(trackId, startUtc, endUtc)
+        val body = PlaybackSearchXml.request(
+            trackId,
+            PlaybackTime.xmlStamp(dayStart),
+            PlaybackTime.xmlStamp(dayEnd)
+        )
 
         val directResponse = trySearch(direct, body)
         if (directResponse != null) {

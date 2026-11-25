@@ -15,4 +15,17 @@ class PlaybackTimeTest {
         assertEquals("20261124T170000Z", PlaybackTime.utcStamp(end))
         assertEquals("00:00–00:05", PlaybackTime.label(start, start + 5L * 60_000, zone))
     }
+
+    @Test fun xmlStamp_usesExtendedIso() {
+        val zone = TimeZone.getTimeZone("Asia/Jakarta")
+        val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = zone }.parse("2026-11-24")!!.time
+        val (start, _) = PlaybackTime.dayRange(day, zone)
+        assertEquals("2026-11-23T17:00:00Z", PlaybackTime.xmlStamp(start))
+    }
+
+    @Test fun parseStamp_acceptsBasicAndExtendedIso() {
+        val basic = "20261123T170000Z"
+        val extended = "2026-11-23T17:00:00Z"
+        assertEquals(PlaybackTime.parseStamp(basic), PlaybackTime.parseStamp(extended))
+    }
 }

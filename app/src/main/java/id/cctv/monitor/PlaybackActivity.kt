@@ -218,7 +218,8 @@ class PlaybackActivity : AppCompatActivity() {
                 )
                 startPlayer(
                     mediaUri = uri,
-                    title = PlaybackUi.rowLabel(clip, context.camera, TimeZone.getDefault())
+                    title = PlaybackUi.rowLabel(clip, context.camera, TimeZone.getDefault()),
+                    clip = clip
                 )
             }
 
@@ -229,7 +230,8 @@ class PlaybackActivity : AppCompatActivity() {
                 downloaded.onSuccess { file ->
                     startPlayer(
                         filePath = file.absolutePath,
-                        title = PlaybackUi.rowLabel(clip, context.camera, TimeZone.getDefault())
+                        title = PlaybackUi.rowLabel(clip, context.camera, TimeZone.getDefault()),
+                        clip = clip
                     )
                 }.onFailure { error ->
                     toast("Gagal mengunduh rekaman: ${error.message ?: "tidak diketahui"}")
@@ -238,11 +240,18 @@ class PlaybackActivity : AppCompatActivity() {
         }
     }
 
-    private fun startPlayer(mediaUri: String? = null, filePath: String? = null, title: String) {
+    private fun startPlayer(
+        mediaUri: String? = null,
+        filePath: String? = null,
+        title: String,
+        clip: RecordingClip
+    ) {
         val intent = Intent(this, RecordingPlayerActivity::class.java).apply {
             mediaUri?.let { putExtra(RecordingPlayerActivity.EXTRA_MEDIA_URI, it) }
             filePath?.let { putExtra(RecordingPlayerActivity.EXTRA_FILE_PATH, it) }
             putExtra(RecordingPlayerActivity.EXTRA_TITLE, title)
+            putExtra(RecordingPlayerActivity.EXTRA_START_MILLIS, clip.startMillis)
+            putExtra(RecordingPlayerActivity.EXTRA_END_MILLIS, clip.endMillis)
         }
         startActivity(intent)
     }

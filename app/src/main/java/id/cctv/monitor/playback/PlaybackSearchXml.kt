@@ -3,6 +3,7 @@ package id.cctv.monitor.playback
 import org.w3c.dom.Element
 import org.xml.sax.InputSource
 import java.io.StringReader
+import java.util.UUID
 import javax.xml.parsers.DocumentBuilderFactory
 
 object PlaybackSearchXml {
@@ -10,7 +11,7 @@ object PlaybackSearchXml {
     fun request(trackId: Int, startUtc: String, endUtc: String): String =
         """<?xml version="1.0" encoding="UTF-8"?>
 <CMSearchDescription>
-  <searchID>1</searchID>
+  <searchID>${UUID.randomUUID().toString().uppercase()}</searchID>
   <trackIDList><trackID>$trackId</trackID></trackIDList>
   <timeSpanList><timeSpan>
     <startTime>$startUtc</startTime>

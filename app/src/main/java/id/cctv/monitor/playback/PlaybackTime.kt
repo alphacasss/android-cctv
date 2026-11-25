@@ -10,14 +10,16 @@ object PlaybackTime {
 
     private val utcZone = TimeZone.getTimeZone("UTC")
     private const val STAMP_PATTERN = "yyyyMMdd'T'HHmmss'Z'"
+    private const val XML_STAMP_PATTERN = "yyyy-MM-dd'T'HH:mm:ss'Z'"
 
-    fun utcStamp(millis: Long): String = stampFormat().format(Date(millis))
+    /** Format dipakai RTSP replay Hikvision (query starttime/endtime). */
+    fun utcStamp(millis: Long): String = format(STAMP_PATTERN, millis)
 
-    fun parseStamp(value: String): Long? = try {
-        stampFormat().apply { isLenient = false }.parse(value.trim())?.time
-    } catch (e: Exception) {
-        null
-    }
+    /** Format dipakai ISAPI XML (CMSearchDescription). */
+    fun xmlStamp(millis: Long): String = format(XML_STAMP_PATTERN, millis)
+
+    fun parseStamp(value: String): Long? =
+        parse(XML_STAMP_PATTERN, value) ?: parse(STAMP_PATTERN, value)
 
     fun dayRange(dayMillis: Long, zone: TimeZone): Pair<Long, Long> {
         val calendar = Calendar.getInstance(zone, Locale.US)
@@ -36,6 +38,15 @@ object PlaybackTime {
         return "${format.format(Date(startMillis))}–${format.format(Date(endMillis))}"
     }
 
-    private fun stampFormat(): SimpleDateFormat =
-        SimpleDateFormat(STAMP_PATTERN, Locale.US).apply { timeZone = utcZone }
+    private fun format(pattern: String, millis: Long): String =
+        stampFormat(pattern).format(Date(millis))
+
+    private fun parse(pattern: String, value: String): Long? = try {
+        stampFormat(pattern).apply { isLenient = false }.parse(value.trim())?.time
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun stampFormat(pattern: String): SimpleDateFormat =
+        SimpleDateFormat(pattern, Locale.US).apply { timeZone = utcZone }
 }

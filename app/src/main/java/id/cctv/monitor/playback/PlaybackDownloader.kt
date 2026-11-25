@@ -53,8 +53,8 @@ class PlaybackDownloader(private val cacheDir: File) {
         """<?xml version="1.0" encoding="UTF-8"?>
 <downloadRequest>
   <trackID>${clip.trackId}</trackID>
-  <startTime>${PlaybackTime.utcStamp(clip.startMillis)}</startTime>
-  <endTime>${PlaybackTime.utcStamp(clip.endMillis)}</endTime>
+  <startTime>${PlaybackTime.xmlStamp(clip.startMillis)}</startTime>
+  <endTime>${PlaybackTime.xmlStamp(clip.endMillis)}</endTime>
 </downloadRequest>"""
 
     private companion object {
