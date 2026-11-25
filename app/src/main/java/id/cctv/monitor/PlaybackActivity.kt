@@ -4,17 +4,18 @@ import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.LinearLayout
+import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
 import id.cctv.monitor.control.CloudIsapiClient
 import id.cctv.monitor.data.Camera
 import id.cctv.monitor.net.Endpoint
@@ -23,10 +24,13 @@ import id.cctv.monitor.net.IsapiClient
 import id.cctv.monitor.playback.CloudPlaybackIsapi
 import id.cctv.monitor.playback.DirectPlaybackIsapi
 import id.cctv.monitor.playback.PlaybackDownloader
+import id.cctv.monitor.playback.PlaybackFilter
 import id.cctv.monitor.playback.PlaybackRtspUrl
 import id.cctv.monitor.playback.PlaybackSearchRepository
 import id.cctv.monitor.playback.PlaybackSearchResult
 import id.cctv.monitor.playback.PlaybackTime
+import id.cctv.monitor.playback.PlaybackTimeline
+import id.cctv.monitor.playback.PlaybackTimelineView
 import id.cctv.monitor.playback.PlaybackTransport
 import id.cctv.monitor.playback.PlaybackTransportResolver
 import id.cctv.monitor.playback.PlaybackUi
@@ -38,20 +42,33 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-/** Cari rekaman NVR per tanggal, lalu putar lewat RTSP atau cache download. */
+/** Playback model Hik-Connect: tanggal, filter, timeline 24 jam, satu pemutar. */
 class PlaybackActivity : AppCompatActivity() {
 
     private lateinit var channelSpinner: Spinner
     private lateinit var dateView: TextView
     private lateinit var dateButton: MaterialButton
-    private lateinit var searchButton: MaterialButton
+    private lateinit var prevDayButton: ImageButton
+    private lateinit var nextDayButton: ImageButton
+    private lateinit var filterGroup: MaterialButtonToggleGroup
+    private lateinit var timeline: PlaybackTimelineView
+    private lateinit var timeView: TextView
+    private lateinit var prevButton: ImageButton
+    private lateinit var nextButton: ImageButton
+    private lateinit var hintView: TextView
     private lateinit var progress: ProgressBar
-    private lateinit var listView: LinearLayout
     private lateinit var downloader: PlaybackDownloader
 
     private var cameras: List<Camera> = emptyList()
     private var selectedDay: Long = startOfDay(System.currentTimeMillis())
-    private var searching = false
+    private var selectedTime: Long = selectedDay
+    private var dayStart: Long = selectedDay
+    private var dayEnd: Long = selectedDay
+    private var rawClips: List<RecordingClip> = emptyList()
+    private var selectedFilter: PlaybackFilter = PlaybackFilter.ALL
+    private var searchContext: SearchContext? = null
+    private var busy = false
+    private var spinnerReady = false
 
     private data class SearchContext(
         val camera: Camera,
@@ -69,9 +86,15 @@ class PlaybackActivity : AppCompatActivity() {
         channelSpinner = findViewById(R.id.spinnerPlaybackChannel)
         dateView = findViewById(R.id.tvPlaybackDate)
         dateButton = findViewById(R.id.btnPlaybackDate)
-        searchButton = findViewById(R.id.btnPlaybackSearch)
+        prevDayButton = findViewById(R.id.btnPlaybackPrevDay)
+        nextDayButton = findViewById(R.id.btnPlaybackNextDay)
+        filterGroup = findViewById(R.id.filterPlayback)
+        timeline = findViewById(R.id.timelinePlayback)
+        timeView = findViewById(R.id.tvPlaybackTime)
+        prevButton = findViewById(R.id.btnPlaybackPrev)
+        nextButton = findViewById(R.id.btnPlaybackNext)
+        hintView = findViewById(R.id.tvPlaybackHint)
         progress = findViewById(R.id.progressPlayback)
-        listView = findViewById(R.id.listRecording)
         downloader = PlaybackDownloader(this)
 
         cameras = PlaybackUi.nvrCameras((application as CctvApp).prefs.cameras())
@@ -80,22 +103,61 @@ class PlaybackActivity : AppCompatActivity() {
             android.R.layout.simple_spinner_dropdown_item,
             cameras.map { it.displayName }
         )
-        updateDateLabel()
+        channelSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                // Callback pertama datang dari setAdapter; search eksplisit dipanggil di bawah.
+                if (!spinnerReady) {
+                    spinnerReady = true
+                    return
+                }
+                if (!busy) lifecycleScope.launch { performSearch() }
+            }
 
-        dateButton.setOnClickListener { pickDate() }
-        searchButton.setOnClickListener {
-            if (!searching) lifecycleScope.launch { performSearch() }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
 
+        filterGroup.check(R.id.filterAll)
+        filterGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            selectedFilter = when (checkedId) {
+                R.id.filterEvent -> PlaybackFilter.EVENT
+                R.id.filterPerson -> PlaybackFilter.PERSON
+                R.id.filterVehicle -> PlaybackFilter.VEHICLE
+                else -> PlaybackFilter.ALL
+            }
+            selectedTime = dayStart
+            renderTimeline()
+        }
+
+        prevDayButton.setOnClickListener { shiftDay(-1) }
+        nextDayButton.setOnClickListener { shiftDay(1) }
+        dateButton.setOnClickListener { pickDate() }
+        prevButton.setOnClickListener { stepClip(-1) }
+        nextButton.setOnClickListener { stepClip(1) }
+
+        updateDateLabel()
+        renderTimeline()
         if (cameras.isEmpty()) {
-            renderMessage("Belum ada kanal NVR aktif. Tambahkan NVR di Setelan terlebih dahulu.")
-            searchButton.isEnabled = false
+            hintView.text = "Belum ada kanal NVR aktif. Tambahkan NVR di Setelan terlebih dahulu."
+        } else {
+            lifecycleScope.launch { performSearch() }
         }
     }
 
     override fun onDestroy() {
         downloader.clear()
         super.onDestroy()
+    }
+
+    private fun shiftDay(delta: Int) {
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = selectedDay
+            add(Calendar.DAY_OF_MONTH, delta)
+        }
+        selectedDay = startOfDay(calendar.timeInMillis)
+        selectedTime = selectedDay
+        updateDateLabel()
+        if (!busy) lifecycleScope.launch { performSearch() }
     }
 
     private fun pickDate() {
@@ -106,7 +168,9 @@ class PlaybackActivity : AppCompatActivity() {
                 selectedDay = startOfDay(
                     Calendar.getInstance().apply { set(year, month, day, 0, 0, 0) }.timeInMillis
                 )
+                selectedTime = selectedDay
                 updateDateLabel()
+                if (!busy) lifecycleScope.launch { performSearch() }
             },
             calendar.get(Calendar.YEAR),
             calendar.get(Calendar.MONTH),
@@ -118,6 +182,12 @@ class PlaybackActivity : AppCompatActivity() {
         dateView.text = SimpleDateFormat("EEE, dd MMM yyyy", Locale.getDefault()).format(Date(selectedDay))
     }
 
+    private fun updateTimeLabel() {
+        timeView.text = SimpleDateFormat("HH:mm", Locale.US).apply {
+            timeZone = TimeZone.getDefault()
+        }.format(Date(selectedTime))
+    }
+
     private fun startOfDay(millis: Long): Long = Calendar.getInstance().apply {
         timeInMillis = millis
         set(Calendar.HOUR_OF_DAY, 0)
@@ -126,10 +196,57 @@ class PlaybackActivity : AppCompatActivity() {
         set(Calendar.MILLISECOND, 0)
     }.timeInMillis
 
+    private fun renderTimeline() {
+        val zone = TimeZone.getDefault()
+        val range = PlaybackTime.dayRange(selectedDay, zone)
+        dayStart = range.first
+        dayEnd = range.second
+        val visible = PlaybackTimeline.filter(rawClips, selectedFilter)
+        timeline.dayStart = dayStart
+        timeline.dayEnd = dayEnd
+        timeline.clips = visible
+        timeline.selectedIndex = PlaybackTimeline.index(
+            visible,
+            PlaybackTimeline.ratio(selectedTime, dayStart, dayEnd),
+            dayStart,
+            dayEnd
+        )
+        timeline.onScrub = { millis ->
+            selectedTime = millis
+            updateTimeLabel()
+        }
+        timeline.onPick = { clip, millis -> openAt(clip, millis) }
+        timeline.render()
+        hintView.text = if (visible.isEmpty()) {
+            "Tidak ada rekaman pada tanggal ini."
+        } else {
+            "${visible.size} klip • tap atau geser timeline untuk memutar"
+        }
+        updateTimeLabel()
+    }
+
+    private fun stepClip(delta: Int) {
+        val visible = PlaybackTimeline.filter(rawClips, selectedFilter)
+        val index = PlaybackTimeline.index(
+            visible,
+            PlaybackTimeline.ratio(selectedTime, dayStart, dayEnd),
+            dayStart,
+            dayEnd
+        )
+        val next = PlaybackTimeline.step(visible.size, index, delta)
+        if (next >= 0) openAt(visible[next], visible[next].startMillis)
+    }
+
     private suspend fun performSearch() {
-        val camera = cameras.getOrNull(channelSpinner.selectedItemPosition) ?: return
+        if (busy) return
+        val camera = cameras.getOrNull(channelSpinner.selectedItemPosition)
+        if (camera == null) {
+            rawClips = emptyList()
+            searchContext = null
+            renderTimeline()
+            return
+        }
         setBusy(true)
-        listView.removeAllViews()
 
         val app = application as CctvApp
         val endpoint = EndpointResolver.resolve(camera, app.prefs.remoteSettings())
@@ -153,51 +270,24 @@ class PlaybackActivity : AppCompatActivity() {
         }.getOrElse { Result.failure(it) }
 
         outcome.onSuccess { result ->
-            render(result, SearchContext(camera, endpoint, user, pass, result))
+            searchContext = SearchContext(camera, endpoint, user, pass, result)
+            rawClips = result.clips
+            renderTimeline()
         }.onFailure { error ->
-            renderMessage("Gagal mencari rekaman: ${error.message ?: "tidak diketahui"}")
+            rawClips = emptyList()
+            searchContext = null
+            renderTimeline()
+            hintView.text = "Gagal mencari rekaman: ${error.message ?: "tidak diketahui"}"
         }
         setBusy(false)
     }
 
-    private fun render(result: PlaybackSearchResult, context: SearchContext) {
-        listView.removeAllViews()
-        if (result.clips.isEmpty()) {
-            renderMessage("Tidak ada rekaman pada tanggal ini.")
-            return
-        }
-        result.clips.take(100).forEach { clip ->
-            val row = TextView(this).apply {
-                text = PlaybackUi.rowLabel(clip, context.camera, TimeZone.getDefault())
-                textSize = 15f
-                setTextColor(ContextCompat.getColor(this@PlaybackActivity, R.color.text))
-                setBackgroundColor(ContextCompat.getColor(this@PlaybackActivity, R.color.surface2))
-                setPadding(dp(12), dp(14), dp(12), dp(14))
-                isClickable = true
-                isFocusable = true
-                setOnClickListener { openClip(clip, context) }
-            }
-            listView.addView(
-                row,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(0, 0, 0, dp(8)) }
-            )
-        }
-    }
+    private fun openAt(clip: RecordingClip, requested: Long) {
+        val context = searchContext ?: return
+        val picked = PlaybackTimeline.pickedMillis(clip, requested)
+        val offset = PlaybackTimeline.seekOffset(clip, picked)
+        val title = PlaybackUi.rowLabel(clip, context.camera, TimeZone.getDefault())
 
-    private fun renderMessage(message: String) {
-        listView.removeAllViews()
-        listView.addView(TextView(this).apply {
-            text = message
-            textSize = 14f
-            setTextColor(ContextCompat.getColor(this@PlaybackActivity, R.color.muted))
-            setPadding(dp(8), dp(16), dp(8), dp(16))
-        })
-    }
-
-    private fun openClip(clip: RecordingClip, context: SearchContext) {
         when (PlaybackTransportResolver.resolve(
             context.result.directReachable,
             context.result.cloudAvailable
@@ -213,13 +303,15 @@ class PlaybackActivity : AppCompatActivity() {
                     context.pass,
                     context.endpoint.host,
                     context.endpoint.rtspPort,
-                    PlaybackTime.utcStamp(clip.startMillis),
+                    PlaybackTime.utcStamp(picked),
                     PlaybackTime.utcStamp(clip.endMillis)
                 )
                 startPlayer(
                     mediaUri = uri,
-                    title = PlaybackUi.rowLabel(clip, context.camera, TimeZone.getDefault()),
-                    clip = clip
+                    title = title,
+                    clip = clip,
+                    playMillis = picked,
+                    seekOffset = 0L
                 )
             }
 
@@ -230,8 +322,10 @@ class PlaybackActivity : AppCompatActivity() {
                 downloaded.onSuccess { file ->
                     startPlayer(
                         filePath = file.absolutePath,
-                        title = PlaybackUi.rowLabel(clip, context.camera, TimeZone.getDefault()),
-                        clip = clip
+                        title = title,
+                        clip = clip,
+                        playMillis = picked,
+                        seekOffset = offset
                     )
                 }.onFailure { error ->
                     toast("Gagal mengunduh rekaman: ${error.message ?: "tidak diketahui"}")
@@ -244,7 +338,9 @@ class PlaybackActivity : AppCompatActivity() {
         mediaUri: String? = null,
         filePath: String? = null,
         title: String,
-        clip: RecordingClip
+        clip: RecordingClip,
+        playMillis: Long,
+        seekOffset: Long
     ) {
         val intent = Intent(this, RecordingPlayerActivity::class.java).apply {
             mediaUri?.let { putExtra(RecordingPlayerActivity.EXTRA_MEDIA_URI, it) }
@@ -252,21 +348,25 @@ class PlaybackActivity : AppCompatActivity() {
             putExtra(RecordingPlayerActivity.EXTRA_TITLE, title)
             putExtra(RecordingPlayerActivity.EXTRA_START_MILLIS, clip.startMillis)
             putExtra(RecordingPlayerActivity.EXTRA_END_MILLIS, clip.endMillis)
+            putExtra(RecordingPlayerActivity.EXTRA_PLAY_MILLIS, playMillis)
+            putExtra(RecordingPlayerActivity.EXTRA_SEEK_OFFSET_MILLIS, seekOffset)
         }
         startActivity(intent)
     }
 
-    private fun setBusy(busy: Boolean) {
-        searching = busy
-        progress.visibility = if (busy) View.VISIBLE else View.GONE
-        searchButton.isEnabled = !busy
-        dateButton.isEnabled = !busy
-        channelSpinner.isEnabled = !busy
+    private fun setBusy(active: Boolean) {
+        busy = active
+        progress.visibility = if (active) View.VISIBLE else View.GONE
+        dateButton.isEnabled = !active
+        prevDayButton.isEnabled = !active
+        nextDayButton.isEnabled = !active
+        channelSpinner.isEnabled = !active
+        filterGroup.isEnabled = !active
+        prevButton.isEnabled = !active
+        nextButton.isEnabled = !active
     }
 
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }
