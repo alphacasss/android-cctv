@@ -35,6 +35,8 @@ class RecordingPlayerActivity : AppCompatActivity() {
         const val EXTRA_TITLE = "recording_title"
         const val EXTRA_START_MILLIS = "recording_start_millis"
         const val EXTRA_END_MILLIS = "recording_end_millis"
+        const val EXTRA_PLAY_MILLIS = "recording_play_millis"
+        const val EXTRA_SEEK_OFFSET_MILLIS = "recording_seek_offset_millis"
     }
 
     private lateinit var videoLayout: VLCVideoLayout
@@ -58,6 +60,8 @@ class RecordingPlayerActivity : AppCompatActivity() {
     private var expectedDurationMillis = 0L
     private var elapsedMillis = 0L
     private var lastTickAt = 0L
+    private var seekOffsetMillis = 0L
+    private var seekOffsetApplied = false
 
     private val clock = Handler(Looper.getMainLooper())
     private val timeTick = object : Runnable {
@@ -116,6 +120,12 @@ class RecordingPlayerActivity : AppCompatActivity() {
         if (seekMode == SeekMode.DISABLED && expectedDurationMillis > 0L) {
             durationMillis = expectedDurationMillis
             durationView.text = RecordingPlaybackTime.format(durationMillis)
+        }
+        val playMillis = intent.getLongExtra(EXTRA_PLAY_MILLIS, clipStart)
+        seekOffsetMillis = intent.getLongExtra(EXTRA_SEEK_OFFSET_MILLIS, 0L).coerceAtLeast(0L)
+        if (playMillis > clipStart) {
+            elapsedMillis = playMillis - clipStart
+            currentView.text = RecordingPlaybackTime.format(elapsedMillis)
         }
 
         titleView.text = intent.getStringExtra(EXTRA_TITLE).orBlankOr("Rekaman")
@@ -283,6 +293,12 @@ class RecordingPlayerActivity : AppCompatActivity() {
                 finished = false
                 hideOverlay()
                 updatePlayPauseIcon()
+                // File cache saja. RTSP tidak bisa seek; seekMode enum menjaganya.
+                if (seekMode == SeekMode.ENABLED && seekOffsetMillis > 0L && !seekOffsetApplied) {
+                    seekOffsetApplied = true
+                    runCatching { player?.time = seekOffsetMillis }
+                    elapsedMillis = seekOffsetMillis
+                }
             }
 
             MediaPlayer.Event.Paused -> updatePlayPauseIcon()
