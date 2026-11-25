@@ -50,6 +50,20 @@ object PlaybackTimeline {
         return (index + delta).coerceIn(0, size - 1)
     }
 
+    /** Indeks dan jam tujuan tombol « ». Jam tujuan jadi state untuk tombol berikutnya. */
+    fun stepState(
+        clips: List<RecordingClip>,
+        millis: Long,
+        dayStart: Long,
+        dayEnd: Long,
+        delta: Int
+    ): Pair<Int, Long>? {
+        val current = index(clips, ratio(millis, dayStart, dayEnd), dayStart, dayEnd)
+        val next = step(clips.size, current, delta)
+        if (next < 0) return null
+        return next to clips[next].startMillis
+    }
+
     fun pickedMillis(clip: RecordingClip, requested: Long): Long =
         requested.coerceIn(clip.startMillis, clip.endMillis)
 

@@ -37,6 +37,7 @@ class RecordingPlayerActivity : AppCompatActivity() {
         const val EXTRA_END_MILLIS = "recording_end_millis"
         const val EXTRA_PLAY_MILLIS = "recording_play_millis"
         const val EXTRA_SEEK_OFFSET_MILLIS = "recording_seek_offset_millis"
+        const val EXTRA_CLEAR_CACHE = "recording_clear_cache"
     }
 
     private lateinit var videoLayout: VLCVideoLayout
@@ -62,6 +63,7 @@ class RecordingPlayerActivity : AppCompatActivity() {
     private var lastTickAt = 0L
     private var seekOffsetMillis = 0L
     private var seekOffsetApplied = false
+    private var cacheFile: File? = null
 
     private val clock = Handler(Looper.getMainLooper())
     private val timeTick = object : Runnable {
@@ -111,6 +113,11 @@ class RecordingPlayerActivity : AppCompatActivity() {
         )
         mediaMrl = resolved.mrl
         seekMode = resolved.seekMode
+        cacheFile = if (intent.getBooleanExtra(EXTRA_CLEAR_CACHE, false)) {
+            intent.getStringExtra(EXTRA_FILE_PATH)?.let(::File)
+        } else {
+            null
+        }
         seekBar.isEnabled = seekMode == SeekMode.ENABLED
         val clipStart = intent.getLongExtra(EXTRA_START_MILLIS, 0L)
         val clipEnd = intent.getLongExtra(EXTRA_END_MILLIS, 0L)
@@ -165,6 +172,7 @@ class RecordingPlayerActivity : AppCompatActivity() {
             }
 
             override fun onStopTrackingTouch(seek: SeekBar) {
+                if (seekMode != SeekMode.ENABLED) return
                 seeking = false
                 val target = RecordingPlaybackTime.seekMillis(durationMillis, seek.progress, seek.max)
                 player?.time = target
@@ -195,6 +203,8 @@ class RecordingPlayerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         releasePlayer()
+        cacheFile?.delete()
+        cacheFile = null
         super.onDestroy()
     }
 

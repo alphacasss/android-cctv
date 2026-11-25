@@ -18,6 +18,31 @@ class PlaybackSearchXmlTest {
         assertEquals(0, PlaybackSearchXml.parse("").size)
     }
 
+    @Test fun parse_rejectsDoctypeEntities() {
+        val xml = """<?xml version="1.0"?><!DOCTYPE r [<!ENTITY cid "101">]>
+          <CMSearchResult><matchList><searchMatchItem>
+            <trackID>&cid;</trackID><timeSpan>
+              <startTime>2026-11-23T16:52:50Z</startTime>
+              <endTime>2026-11-23T17:09:46Z</endTime>
+            </timeSpan>
+          </searchMatchItem></matchList></CMSearchResult>"""
+        assertEquals(0, PlaybackSearchXml.parse(xml).size)
+    }
+
+    @Test fun parse_skipsInvalidTimeSpan() {
+        val xml = """<?xml version="1.0"?><CMSearchResult><matchList>
+          <searchMatchItem><trackID>201</trackID><timeSpan>
+            <startTime>2026-11-24T01:05:00Z</startTime>
+            <endTime>2026-11-24T01:00:00Z</endTime>
+          </timeSpan></searchMatchItem>
+          <searchMatchItem><trackID>101</trackID><timeSpan>
+            <startTime>2026-11-23T16:52:50Z</startTime>
+            <endTime>2026-11-23T17:09:46Z</endTime>
+          </timeSpan></searchMatchItem>
+        </matchList></CMSearchResult>"""
+        assertEquals(listOf(101), PlaybackSearchXml.parse(xml).map { it.trackId })
+    }
+
     @Test fun request_usesExtendedIsoStamps() {
         val xml = PlaybackSearchXml.request(101, "2026-11-23T17:00:00Z", "2026-11-24T17:00:00Z")
         assertEquals(true, xml.contains("<startTime>2026-11-23T17:00:00Z</startTime>"))

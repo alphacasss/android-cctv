@@ -138,7 +138,8 @@
             <id.cctv.monitor.playback.PlaybackTimelineView
                 android:id="@+id/timelinePlayback"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent" />
+                android:layout_height="match_parent"
+                android:contentDescription="Bilah waktu rekaman" />
 
             <ProgressBar
                 android:id="@+id/progressPlayback"

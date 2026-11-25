@@ -38,6 +38,15 @@ object PlaybackTime {
         return "${format.format(Date(startMillis))}–${format.format(Date(endMillis))}"
     }
 
+    fun dayLabel(dayMillis: Long, nowMillis: Long, zone: TimeZone): String {
+        if (dayRange(dayMillis, zone).first == dayRange(nowMillis, zone).first) {
+            return "Hari ini"
+        }
+        return SimpleDateFormat("EEE, dd MMM yyyy", Locale.getDefault())
+            .apply { timeZone = zone }
+            .format(Date(dayMillis))
+    }
+
     private fun format(pattern: String, millis: Long): String =
         stampFormat(pattern).format(Date(millis))
 

@@ -47,6 +47,37 @@ class PlaybackTimelineTest {
         assertEquals(1, PlaybackTimeline.step(2, 1, 1))
     }
 
+    @Test fun clipAt_samePriorityShorterWins() {
+        val longPerson = RecordingClip(
+            101, dayStart, dayStart + 3_600_000L, eventKind = PlaybackEventKind.PERSON
+        )
+        val shortPerson = RecordingClip(
+            101, dayStart + 1_800_000L, dayStart + 2_100_000L,
+            eventKind = PlaybackEventKind.PERSON
+        )
+        assertEquals(
+            shortPerson,
+            PlaybackTimeline.clipAt(
+                listOf(longPerson, shortPerson),
+                PlaybackTimeline.ratio(dayStart + 1_900_000L, dayStart, dayEnd),
+                dayStart,
+                dayEnd
+            )
+        )
+    }
+
+    @Test fun stepState_twoConsecutiveStepsAdvance() {
+        val laterA = RecordingClip(101, dayStart + 10_800_000L, dayStart + 10_900_000L)
+        val laterB = RecordingClip(101, dayStart + 21_600_000L, dayStart + 21_700_000L)
+        val clips = listOf(continuous, laterA, laterB)
+        val first = PlaybackTimeline.stepState(clips, dayStart, dayStart, dayEnd, 1)!!
+        assertEquals(1, first.first)
+        assertEquals(laterA.startMillis, first.second)
+        val second = PlaybackTimeline.stepState(clips, first.second, dayStart, dayEnd, 1)!!
+        assertEquals(2, second.first)
+        assertEquals(laterB.startMillis, second.second)
+    }
+
     @Test fun safePicked_atEndFallsBackToStart() {
         assertEquals(continuous.startMillis, PlaybackTimeline.safePicked(continuous, continuous.endMillis))
         assertEquals(

@@ -4,6 +4,7 @@ import org.w3c.dom.Element
 import org.xml.sax.InputSource
 import java.io.StringReader
 import java.util.UUID
+import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 
 object PlaybackSearchXml {
@@ -23,7 +24,16 @@ object PlaybackSearchXml {
     fun parse(body: String): List<RecordingClip> {
         if (body.isBlank()) return emptyList()
         return try {
-            val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = false }
+            val factory = DocumentBuilderFactory.newInstance().apply {
+                isNamespaceAware = false
+                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+                setFeature("http://xml.org/sax/features/external-general-entities", false)
+                setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+                setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+                isXIncludeAware = false
+                isExpandEntityReferences = false
+            }
             val document = factory.newDocumentBuilder()
                 .parse(InputSource(StringReader(body.removePrefix("\uFEFF"))))
             val clips = mutableListOf<RecordingClip>()
@@ -33,6 +43,7 @@ object PlaybackSearchXml {
                 val trackId = item.text("trackID")?.toIntOrNull() ?: continue
                 val startMillis = item.text("startTime")?.let(PlaybackTime::parseStamp) ?: continue
                 val endMillis = item.text("endTime")?.let(PlaybackTime::parseStamp) ?: continue
+                if (endMillis <= startMillis) continue
                 val playbackUri = item.text("playbackURI").orEmpty()
                 val eventKind = PlaybackEventKind.from(item.text("eventType") ?: item.text("event"))
                 clips += RecordingClip(trackId, startMillis, endMillis, playbackUri, eventKind)

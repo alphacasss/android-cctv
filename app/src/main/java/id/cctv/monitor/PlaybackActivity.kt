@@ -69,6 +69,8 @@ class PlaybackActivity : AppCompatActivity() {
     private var searchContext: SearchContext? = null
     private var busy = false
     private var spinnerReady = false
+    private var pendingSearch = false
+    private var cacheHandedOff = false
 
     private data class SearchContext(
         val camera: Camera,
@@ -110,7 +112,7 @@ class PlaybackActivity : AppCompatActivity() {
                     spinnerReady = true
                     return
                 }
-                if (!busy) lifecycleScope.launch { performSearch() }
+                requestSearch()
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -140,13 +142,23 @@ class PlaybackActivity : AppCompatActivity() {
         if (cameras.isEmpty()) {
             hintView.text = "Belum ada kanal NVR aktif. Tambahkan NVR di Setelan terlebih dahulu."
         } else {
-            lifecycleScope.launch { performSearch() }
+            requestSearch()
         }
     }
 
     override fun onDestroy() {
-        downloader.clear()
+        // File yang sudah diserahkan ke player dihapus player saat selesai, bukan di sini.
+        if (!cacheHandedOff) downloader.clear()
         super.onDestroy()
+    }
+
+    /** Search terakhir menang; permintaan saat busy ditunda satu kali, tanpa polling. */
+    private fun requestSearch() {
+        if (busy) {
+            pendingSearch = true
+            return
+        }
+        lifecycleScope.launch { performSearch() }
     }
 
     private fun shiftDay(delta: Int) {
@@ -157,7 +169,7 @@ class PlaybackActivity : AppCompatActivity() {
         selectedDay = startOfDay(calendar.timeInMillis)
         selectedTime = selectedDay
         updateDateLabel()
-        if (!busy) lifecycleScope.launch { performSearch() }
+        requestSearch()
     }
 
     private fun pickDate() {
@@ -170,7 +182,7 @@ class PlaybackActivity : AppCompatActivity() {
                 )
                 selectedTime = selectedDay
                 updateDateLabel()
-                if (!busy) lifecycleScope.launch { performSearch() }
+                requestSearch()
             },
             calendar.get(Calendar.YEAR),
             calendar.get(Calendar.MONTH),
@@ -179,7 +191,7 @@ class PlaybackActivity : AppCompatActivity() {
     }
 
     private fun updateDateLabel() {
-        dateView.text = SimpleDateFormat("EEE, dd MMM yyyy", Locale.getDefault()).format(Date(selectedDay))
+        dateView.text = PlaybackTime.dayLabel(selectedDay, System.currentTimeMillis(), TimeZone.getDefault())
     }
 
     private fun updateTimeLabel() {
@@ -227,14 +239,11 @@ class PlaybackActivity : AppCompatActivity() {
 
     private fun stepClip(delta: Int) {
         val visible = PlaybackTimeline.filter(rawClips, selectedFilter)
-        val index = PlaybackTimeline.index(
-            visible,
-            PlaybackTimeline.ratio(selectedTime, dayStart, dayEnd),
-            dayStart,
-            dayEnd
-        )
-        val next = PlaybackTimeline.step(visible.size, index, delta)
-        if (next >= 0) openAt(visible[next], visible[next].startMillis)
+        val target = PlaybackTimeline.stepState(visible, selectedTime, dayStart, dayEnd, delta)
+            ?: return
+        selectedTime = target.second
+        renderTimeline()
+        openAt(visible[target.first], selectedTime)
     }
 
     private suspend fun performSearch() {
@@ -280,6 +289,10 @@ class PlaybackActivity : AppCompatActivity() {
             hintView.text = "Gagal mencari rekaman: ${error.message ?: "tidak diketahui"}"
         }
         setBusy(false)
+        if (pendingSearch) {
+            pendingSearch = false
+            requestSearch()
+        }
     }
 
     private fun openAt(clip: RecordingClip, requested: Long) {
@@ -342,9 +355,11 @@ class PlaybackActivity : AppCompatActivity() {
         playMillis: Long,
         seekOffset: Long
     ) {
+        if (filePath != null) cacheHandedOff = true
         val intent = Intent(this, RecordingPlayerActivity::class.java).apply {
             mediaUri?.let { putExtra(RecordingPlayerActivity.EXTRA_MEDIA_URI, it) }
             filePath?.let { putExtra(RecordingPlayerActivity.EXTRA_FILE_PATH, it) }
+            putExtra(RecordingPlayerActivity.EXTRA_CLEAR_CACHE, filePath != null)
             putExtra(RecordingPlayerActivity.EXTRA_TITLE, title)
             putExtra(RecordingPlayerActivity.EXTRA_START_MILLIS, clip.startMillis)
             putExtra(RecordingPlayerActivity.EXTRA_END_MILLIS, clip.endMillis)

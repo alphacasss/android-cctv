@@ -7,8 +7,13 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.content.ContextCompat
 import id.cctv.monitor.R
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /** Bilah waktu 24 jam. Tap atau drag; playback baru dipicu saat jari dilepas. */
 class PlaybackTimelineView @JvmOverloads constructor(
@@ -28,7 +33,24 @@ class PlaybackTimelineView @JvmOverloads constructor(
     private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 3f }
 
+    init {
+        setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES)
+        contentDescription = "Bilah waktu rekaman. Tap atau geser untuk memilih jam."
+    }
+
     fun render() = invalidate()
+
+    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        info.contentDescription = contentDescription
+        info.isClickable = true
+    }
+
+    private fun announceHour(ratio: Float) {
+        val hour = SimpleDateFormat("HH:mm", Locale.US).apply { timeZone = TimeZone.getDefault() }
+            .format(Date(millisAt(ratio)))
+        contentDescription = "Bilah waktu rekaman. Jam terpilih $hour."
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -76,6 +98,7 @@ class PlaybackTimelineView @JvmOverloads constructor(
                 dragging = true
                 currentRatio = ratio
                 onScrub?.invoke(millisAt(ratio))
+                announceHour(ratio)
                 render()
                 true
             }
@@ -84,6 +107,7 @@ class PlaybackTimelineView @JvmOverloads constructor(
                 if (!dragging) return false
                 currentRatio = ratio
                 onScrub?.invoke(millisAt(ratio))
+                announceHour(ratio)
                 render()
                 true
             }
@@ -95,6 +119,7 @@ class PlaybackTimelineView @JvmOverloads constructor(
                 PlaybackTimeline.clipAt(clips, ratio, dayStart, dayEnd)?.let { clip ->
                     onPick?.invoke(clip, millis)
                 }
+                announceHour(ratio)
                 render()
                 true
             }
