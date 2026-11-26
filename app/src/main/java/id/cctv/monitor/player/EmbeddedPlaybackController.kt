@@ -165,10 +165,8 @@ class EmbeddedPlaybackController internal constructor(
                 emit()
             }
 
-            EmbeddedPlaybackEvent.PAUSED -> {
-                playing = false
-                emit()
-            }
+            // PAUSED bisa antre dari tap lama; jangan timpa niat play terbaru.
+            EmbeddedPlaybackEvent.PAUSED -> Unit
 
             EmbeddedPlaybackEvent.TIME_CHANGED,
             EmbeddedPlaybackEvent.LENGTH_CHANGED -> Unit

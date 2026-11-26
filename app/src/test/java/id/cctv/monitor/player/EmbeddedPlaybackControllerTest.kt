@@ -72,6 +72,25 @@ class EmbeddedPlaybackControllerTest {
         assertEquals(1, media.events.count { it == "pause" })
     }
 
+    @Test fun queuedPausedEventDoesNotUndoLaterPlayIntent() {
+        val media = FakeMedia()
+        val queued = mutableListOf<() -> Unit>()
+        val controller = EmbeddedPlaybackController(media, { queued += it }, { })
+        controller.load(tempFile(), 0L)
+        queued.forEach { it() }
+        media.emit(EmbeddedPlaybackEvent.PLAYING)
+        queued.forEach { it() }
+
+        controller.pause()
+        media.emit(EmbeddedPlaybackEvent.PAUSED)
+        controller.playPause()
+        queued.forEach { it() }
+
+        assertTrue(controller.isPlaying)
+        assertEquals(2, media.events.count { it == "play" })
+        assertEquals(1, media.events.count { it == "pause" })
+    }
+
     @Test fun releaseIgnoresEventsDispatchedAfterDestroy() {
         val media = FakeMedia()
         val states = mutableListOf<EmbeddedPlaybackUiState>()
