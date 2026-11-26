@@ -26,19 +26,13 @@ class PlaybackDownloaderTest {
         val requests = Collections.synchronizedList(mutableListOf<String>())
         val executor = Executors.newSingleThreadExecutor()
         val served = executor.submit {
-            repeat(2) { index ->
-                server.accept().use { socket ->
-                    val (line, body) = readRequest(socket)
-                    requests += line
-                    if (index == 0) {
-                        assertTrue(body.contains("<playbackURI>rtsp://192.168.100.34/Streaming/tracks/101/?starttime=20261123T165250Z&amp;endtime=20261123T170946Z</playbackURI>"))
-                        assertTrue(body.contains("xmlns=\"http://www.isapi.org/ver20/XMLSchema\""))
-                        assertFalse(body.contains("<trackID>"))
-                        respond(socket, "<DownloadResponse><downloadId>clip-42</downloadId></DownloadResponse>")
-                    } else {
-                        respond(socket, "MP4-BYTES")
-                    }
-                }
+            server.accept().use { socket ->
+                val (line, body) = readRequest(socket)
+                requests += line
+                assertTrue(body.contains("<playbackURI>rtsp://192.168.100.34/Streaming/tracks/101/?starttime=20261123T165250Z&amp;endtime=20261123T170946Z</playbackURI>"))
+                assertTrue(body.contains("xmlns=\"http://www.isapi.org/ver20/XMLSchema\""))
+                assertFalse(body.contains("<trackID>"))
+                respond(socket, "MP4-BYTES")
             }
         }
         try {
@@ -51,7 +45,6 @@ class PlaybackDownloaderTest {
             assertEquals(PlaybackCache.fileFor(cacheDir, clip).path, file.path)
             assertEquals("MP4-BYTES", file.readText())
             assertTrue(requests[0].startsWith("POST /ISAPI/ContentMgmt/download"))
-            assertTrue(requests[1].startsWith("GET /ISAPI/ContentMgmt/download/clip-42"))
 
             downloader.clear()
             assertFalse(file.exists())

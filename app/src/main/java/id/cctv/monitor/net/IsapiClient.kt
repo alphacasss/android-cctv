@@ -1,5 +1,7 @@
 package id.cctv.monitor.net
 
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.Proxy
@@ -48,6 +50,123 @@ class IsapiClient(
 
     /** GET biner beserta status HTTP, untuk diagnosa snapshot. */
     fun getBinary(path: String): Pair<Int, ByteArray> = request("GET", path, null)
+
+    /** GET biner besar langsung ke file, tanpa menampung seluruh respons di memori. */
+    fun downloadToFile(path: String, target: File): Int {
+        val code = requestToFile("GET", path, null, target)
+        if (code !in 200..299) {
+            throw IsapiException("Gagal mengunduh rekaman (HTTP $code).", code)
+        }
+        return code
+    }
+
+    /** POST yang mengembalikan biner rekaman langsung, tanpa downloadId. */
+    fun postToFile(path: String, body: String, target: File): Int =
+        requestToFile("POST", path, body, target)
+
+    private fun requestToFile(
+        method: String,
+        path: String,
+        body: String?,
+        target: File
+    ): Int {
+        var auth: String? = null
+        var attempt = 0
+        while (attempt < 2) {
+            attempt++
+            val conn = try {
+                URL(baseUrl + path).openConnection(Proxy.NO_PROXY) as HttpURLConnection
+            } catch (e: Exception) {
+                throw IsapiException("Alamat kamera tidak valid: $baseUrl$path", null, e)
+            }
+            try {
+                conn.requestMethod = method
+                conn.connectTimeout = connectTimeoutMs
+                conn.readTimeout = readTimeoutMs
+                conn.instanceFollowRedirects = false
+                conn.useCaches = false
+                conn.setRequestProperty("User-Agent", "CCTV-Monitor-Android/1.0")
+                conn.setRequestProperty("Accept", "*/*")
+                auth?.let { conn.setRequestProperty("Authorization", it) }
+
+                if (body != null) {
+                    val bytes = body.toByteArray(Charsets.UTF_8)
+                    conn.doOutput = true
+                    conn.setRequestProperty("Content-Type", "application/xml; charset=\"UTF-8\"")
+                    conn.setFixedLengthStreamingMode(bytes.size)
+                    conn.outputStream.use { it.write(bytes) }
+                }
+
+                val code = conn.responseCode
+                if (code == 401 && auth == null) {
+                    val challenge = conn.getHeaderField("WWW-Authenticate")
+                    if (challenge.isNullOrBlank()) {
+                        throw IsapiException("Kamera menolak (401) tanpa memberi skema autentikasi.", 401)
+                    }
+                    auth = try {
+                        DigestAuth.authorization(challenge, method, path, user, pass)
+                    } catch (e: Exception) {
+                        throw IsapiException("Skema autentikasi kamera tidak dikenal.", 401, e)
+                    }
+                    continue
+                }
+                if (code == 401) {
+                    throw IsapiException(
+                        "Autentikasi kamera gagal (HTTP 401). Periksa user/password kamera. " +
+                            "Hikvision bisa mengunci akun sementara bila login gagal berulang kali, " +
+                            "jadi jangan dicoba berkali-kali.",
+                        401
+                    )
+                }
+                if (code !in 200..299) {
+                    target.delete()
+                    return code
+                }
+
+                val stream = conn.inputStream
+                    ?: throw IsapiException("Respons unduhan rekaman kosong.", code)
+                target.parentFile?.mkdirs()
+                val buffer = ByteArray(16 * 1024)
+                var copied = 0L
+                try {
+                    stream.use { input ->
+                        FileOutputStream(target).use { output ->
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read < 0) break
+                                output.write(buffer, 0, read)
+                                copied += read
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    target.delete()
+                    throw IsapiException(
+                        "Unduhan rekaman terputus: ${e.message ?: e.javaClass.simpleName}",
+                        code,
+                        e
+                    )
+                }
+                if (copied == 0L) {
+                    target.delete()
+                    throw IsapiException("Respons unduhan rekaman kosong.", code)
+                }
+                return code
+            } catch (e: IsapiException) {
+                throw e
+            } catch (e: Exception) {
+                target.delete()
+                throw IsapiException(
+                    "Tidak bisa menghubungi kamera: ${e.message ?: e.javaClass.simpleName}",
+                    null,
+                    e
+                )
+            } finally {
+                conn.disconnect()
+            }
+        }
+        throw IsapiException("Autentikasi kamera gagal (401). Periksa user/password.", 401)
+    }
 
     private fun request(method: String, path: String, body: String?): Pair<Int, ByteArray> {
         var auth: String? = null
