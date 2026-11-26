@@ -1,7 +1,6 @@
 package id.cctv.monitor
 
 import android.app.DatePickerDialog
-import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.AdapterView
@@ -21,11 +20,16 @@ import id.cctv.monitor.data.Camera
 import id.cctv.monitor.net.Endpoint
 import id.cctv.monitor.net.EndpointResolver
 import id.cctv.monitor.net.IsapiClient
+import id.cctv.monitor.player.EmbeddedPlaybackController
+import id.cctv.monitor.player.EmbeddedPlaybackUiState
+import id.cctv.monitor.player.SharedVlc
 import id.cctv.monitor.playback.CloudPlaybackIsapi
 import id.cctv.monitor.playback.DirectPlaybackIsapi
+import id.cctv.monitor.playback.PlaybackCacheAction
+import id.cctv.monitor.playback.PlaybackCacheSession
+import id.cctv.monitor.playback.PlaybackClipKey
 import id.cctv.monitor.playback.PlaybackDownloader
 import id.cctv.monitor.playback.PlaybackFilter
-import id.cctv.monitor.playback.PlaybackRtspUrl
 import id.cctv.monitor.playback.PlaybackSearchRepository
 import id.cctv.monitor.playback.PlaybackSearchResult
 import id.cctv.monitor.playback.PlaybackTime
@@ -36,13 +40,14 @@ import id.cctv.monitor.playback.PlaybackTransportResolver
 import id.cctv.monitor.playback.PlaybackUi
 import id.cctv.monitor.playback.RecordingClip
 import kotlinx.coroutines.launch
+import org.videolan.libvlc.util.VLCVideoLayout
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-/** Playback model Hik-Connect: tanggal, filter, timeline 24 jam, satu pemutar. */
+/** Playback model Hik-Connect: video di atas, slider 24 jam di bawah, satu decoder. */
 class PlaybackActivity : AppCompatActivity() {
 
     private lateinit var channelSpinner: Spinner
@@ -57,7 +62,13 @@ class PlaybackActivity : AppCompatActivity() {
     private lateinit var nextButton: ImageButton
     private lateinit var hintView: TextView
     private lateinit var progress: ProgressBar
+    private lateinit var videoOverlay: TextView
+    private lateinit var videoTitle: TextView
+    private lateinit var videoPlayPauseButton: ImageButton
+
     private lateinit var downloader: PlaybackDownloader
+    private lateinit var cacheSession: PlaybackCacheSession
+    private var embeddedPlayer: EmbeddedPlaybackController? = null
 
     private var cameras: List<Camera> = emptyList()
     private var selectedDay: Long = startOfDay(System.currentTimeMillis())
@@ -70,7 +81,6 @@ class PlaybackActivity : AppCompatActivity() {
     private var busy = false
     private var spinnerReady = false
     private var pendingSearch = false
-    private var cacheHandedOff = false
 
     private data class SearchContext(
         val camera: Camera,
@@ -97,7 +107,18 @@ class PlaybackActivity : AppCompatActivity() {
         nextButton = findViewById(R.id.btnPlaybackNext)
         hintView = findViewById(R.id.tvPlaybackHint)
         progress = findViewById(R.id.progressPlayback)
+        videoOverlay = findViewById(R.id.tvPlaybackVideoOverlay)
+        videoTitle = findViewById(R.id.tvPlaybackVideoTitle)
+        videoPlayPauseButton = findViewById(R.id.btnPlaybackVideoPlayPause)
+
         downloader = PlaybackDownloader(this)
+        cacheSession = PlaybackCacheSession()
+        embeddedPlayer = EmbeddedPlaybackController(
+            SharedVlc.get(applicationContext),
+            findViewById<VLCVideoLayout>(R.id.videoPlayback),
+            ::renderEmbeddedUi
+        )
+        videoPlayPauseButton.setOnClickListener { embeddedPlayer?.playPause() }
 
         cameras = PlaybackUi.nvrCameras((application as CctvApp).prefs.cameras())
         channelSpinner.adapter = ArrayAdapter(
@@ -112,6 +133,7 @@ class PlaybackActivity : AppCompatActivity() {
                     spinnerReady = true
                     return
                 }
+                resetEmbeddedPlayback()
                 requestSearch()
             }
 
@@ -128,6 +150,7 @@ class PlaybackActivity : AppCompatActivity() {
                 else -> PlaybackFilter.ALL
             }
             selectedTime = dayStart
+            resetEmbeddedPlayback()
             renderTimeline()
         }
 
@@ -146,9 +169,20 @@ class PlaybackActivity : AppCompatActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        embeddedPlayer?.resume()
+    }
+
+    override fun onStop() {
+        embeddedPlayer?.pause()
+        super.onStop()
+    }
+
     override fun onDestroy() {
-        // File yang sudah diserahkan ke player dihapus player saat selesai, bukan di sini.
-        if (!cacheHandedOff) downloader.clear()
+        resetEmbeddedPlayback()
+        embeddedPlayer?.release()
+        embeddedPlayer = null
         super.onDestroy()
     }
 
@@ -168,6 +202,7 @@ class PlaybackActivity : AppCompatActivity() {
         }
         selectedDay = startOfDay(calendar.timeInMillis)
         selectedTime = selectedDay
+        resetEmbeddedPlayback()
         updateDateLabel()
         requestSearch()
     }
@@ -181,6 +216,7 @@ class PlaybackActivity : AppCompatActivity() {
                     Calendar.getInstance().apply { set(year, month, day, 0, 0, 0) }.timeInMillis
                 )
                 selectedTime = selectedDay
+                resetEmbeddedPlayback()
                 updateDateLabel()
                 requestSearch()
             },
@@ -232,7 +268,7 @@ class PlaybackActivity : AppCompatActivity() {
         hintView.text = if (visible.isEmpty()) {
             "Tidak ada rekaman pada tanggal ini."
         } else {
-            "${visible.size} klip • tap atau geser timeline untuk memutar"
+            "${visible.size} klip • geser slider untuk memindahkan video"
         }
         updateTimeLabel()
     }
@@ -252,6 +288,7 @@ class PlaybackActivity : AppCompatActivity() {
         if (camera == null) {
             rawClips = emptyList()
             searchContext = null
+            resetEmbeddedPlayback()
             renderTimeline()
             return
         }
@@ -285,6 +322,7 @@ class PlaybackActivity : AppCompatActivity() {
         }.onFailure { error ->
             rawClips = emptyList()
             searchContext = null
+            resetEmbeddedPlayback()
             renderTimeline()
             hintView.text = "Gagal mencari rekaman: ${error.message ?: "tidak diketahui"}"
         }
@@ -297,76 +335,67 @@ class PlaybackActivity : AppCompatActivity() {
 
     private fun openAt(clip: RecordingClip, requested: Long) {
         val context = searchContext ?: return
-        val picked = PlaybackTimeline.safePicked(clip, requested)
-        val offset = PlaybackTimeline.seekOffset(clip, picked)
-        val title = PlaybackUi.rowLabel(clip, context.camera, TimeZone.getDefault())
+        val zone = TimeZone.getDefault()
+        val key = PlaybackClipKey(context.camera.id, clip.trackId, clip.startMillis)
+        val plan = cacheSession.plan(key, clip, requested)
+        val title = PlaybackUi.rowLabel(clip, context.camera, zone)
 
-        when (PlaybackTransportResolver.resolve(
-            context.result.directReachable,
-            context.result.cloudAvailable
-        )) {
-            PlaybackTransport.ERROR_NO_ROUTE -> toast(
-                "NVR tidak terjangkau. Hubungkan HP ke LAN/VPN atau login Hik-Connect."
-            )
-
-            PlaybackTransport.STREAM_RTSP -> {
-                val uri = PlaybackRtspUrl.build(
-                    clip.trackId,
-                    context.user,
-                    context.pass,
-                    context.endpoint.host,
-                    context.endpoint.rtspPort,
-                    PlaybackTime.utcStamp(picked),
-                    PlaybackTime.utcStamp(clip.endMillis)
-                )
-                startPlayer(
-                    mediaUri = uri,
-                    title = title,
-                    clip = clip,
-                    playMillis = picked,
-                    seekOffset = 0L
-                )
+        when (plan.action) {
+            PlaybackCacheAction.REUSE -> {
+                videoTitle.text = title
+                embeddedPlayer?.seek(plan.offsetMillis)
             }
 
-            PlaybackTransport.DOWNLOAD_CACHE -> lifecycleScope.launch {
-                setBusy(true)
-                val downloaded = downloader.download(clip, context.endpoint, context.user, context.pass)
-                setBusy(false)
-                downloaded.onSuccess { file ->
-                    startPlayer(
-                        filePath = file.absolutePath,
-                        title = title,
-                        clip = clip,
-                        playMillis = picked,
-                        seekOffset = offset
-                    )
-                }.onFailure { error ->
-                    toast("Gagal mengunduh rekaman: ${error.message ?: "tidak diketahui"}")
+            PlaybackCacheAction.DOWNLOAD -> {
+                val route = PlaybackTransportResolver.resolve(
+                    context.result.directReachable,
+                    context.result.cloudAvailable
+                )
+                if (route == PlaybackTransport.ERROR_NO_ROUTE) {
+                    toast("NVR tidak terjangkau. Hubungkan HP ke LAN/VPN atau login Hik-Connect.")
+                    return
+                }
+                lifecycleScope.launch {
+                    embeddedPlayer?.stop()
+                    setBusy(true)
+                    val downloaded = downloader.download(clip, context.endpoint, context.user, context.pass)
+                    setBusy(false)
+                    downloaded.onSuccess { file ->
+                        videoTitle.text = title
+                        embeddedPlayer?.load(file, plan.offsetMillis)
+                        val stale = cacheSession.adopt(key, file)
+                        stale?.takeIf { it != file }?.delete()
+                    }.onFailure { error ->
+                        videoTitle.text = "Playback"
+                        showVideoMessage("Gagal mengunduh rekaman: ${error.message ?: "tidak diketahui"}")
+                        toast("Gagal mengunduh rekaman: ${error.message ?: "tidak diketahui"}")
+                    }
                 }
             }
         }
     }
 
-    private fun startPlayer(
-        mediaUri: String? = null,
-        filePath: String? = null,
-        title: String,
-        clip: RecordingClip,
-        playMillis: Long,
-        seekOffset: Long
-    ) {
-        if (filePath != null) cacheHandedOff = true
-        val intent = Intent(this, RecordingPlayerActivity::class.java).apply {
-            mediaUri?.let { putExtra(RecordingPlayerActivity.EXTRA_MEDIA_URI, it) }
-            filePath?.let { putExtra(RecordingPlayerActivity.EXTRA_FILE_PATH, it) }
-            putExtra(RecordingPlayerActivity.EXTRA_CLEAR_CACHE, filePath != null)
-            putExtra(RecordingPlayerActivity.EXTRA_TITLE, title)
-            putExtra(RecordingPlayerActivity.EXTRA_START_MILLIS, clip.startMillis)
-            putExtra(RecordingPlayerActivity.EXTRA_END_MILLIS, clip.endMillis)
-            putExtra(RecordingPlayerActivity.EXTRA_PLAY_MILLIS, playMillis)
-            putExtra(RecordingPlayerActivity.EXTRA_SEEK_OFFSET_MILLIS, seekOffset)
-        }
-        startActivity(intent)
+    private fun resetEmbeddedPlayback() {
+        embeddedPlayer?.stop()
+        cacheSession.reset()
+        downloader.clear()
+        videoOverlay.visibility = View.GONE
+        videoTitle.text = "Playback"
+        videoPlayPauseButton.setImageResource(R.drawable.ic_play)
+    }
+
+    private fun renderEmbeddedUi(state: EmbeddedPlaybackUiState) {
+        val message = state.overlay
+        videoOverlay.text = message.orEmpty()
+        videoOverlay.visibility = if (message.isNullOrBlank()) View.GONE else View.VISIBLE
+        videoPlayPauseButton.setImageResource(
+            if (state.playing) R.drawable.ic_pause else R.drawable.ic_play
+        )
+    }
+
+    private fun showVideoMessage(message: String) {
+        videoOverlay.text = message
+        videoOverlay.visibility = View.VISIBLE
     }
 
     private fun setBusy(active: Boolean) {
@@ -379,6 +408,8 @@ class PlaybackActivity : AppCompatActivity() {
         filterGroup.isEnabled = !active
         prevButton.isEnabled = !active
         nextButton.isEnabled = !active
+        timeline.isEnabled = !active
+        videoPlayPauseButton.isEnabled = !active
     }
 
     private fun toast(message: String) {
