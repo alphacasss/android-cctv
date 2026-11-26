@@ -19,6 +19,8 @@ class EmbeddedPlaybackController internal constructor(
 ) {
 
     private var viewsAttached = false
+    private var mediaLoaded = false
+    private var released = false
     private var overlay: String? = null
     private var playing = false
     private var playingSeen = false
@@ -30,14 +32,17 @@ class EmbeddedPlaybackController internal constructor(
         media.listener = { event -> dispatch { onMediaEvent(event) } }
     }
 
+    /** State tombol mengikuti niat user, bukan event VLC yang masih antre. */
     val isPlaying: Boolean get() = playing
 
     fun load(file: File, offsetMillis: Long) {
+        if (released) return
         pendingOffsetMillis = offsetMillis.coerceAtLeast(0L)
         offsetApplied = false
-        playing = false
+        playing = true
         playingSeen = false
         finished = false
+        mediaLoaded = true
         overlay = "Memuat…"
         emit()
 
@@ -52,46 +57,65 @@ class EmbeddedPlaybackController internal constructor(
 
     /** Geser slider: video yang sama dipindah, including saat pause atau setelah selesai. */
     fun seek(offsetMillis: Long) {
+        if (!mediaLoaded || released) return
         val target = offsetMillis.coerceAtLeast(0L)
         if (finished) {
             pendingOffsetMillis = target
             offsetApplied = false
             finished = false
             playingSeen = false
+            playing = true
             overlay = null
+            emit()
             media.stop()
             media.play()
+        } else if (!playingSeen) {
+            // VLC mengabaikan setTime sebelum input ada; simpan dan pakai saat PLAYING.
+            pendingOffsetMillis = target
+            offsetApplied = false
+            emit()
         } else {
             media.time = target
             pendingOffsetMillis = 0L
             offsetApplied = true
+            emit()
         }
-        emit()
     }
 
     fun playPause() {
+        if (!mediaLoaded || released) return
         if (finished) {
             finished = false
             playingSeen = false
+            playing = true
             overlay = null
+            emit()
             media.stop()
             media.play()
-            emit()
             return
         }
-        if (playing) media.pause() else media.play()
+        playing = !playing
+        if (playing) media.play() else media.pause()
+        emit()
     }
 
     fun pause() {
-        if (playing) media.pause()
+        if (!mediaLoaded || released || !playing) return
+        playing = false
+        media.pause()
+        emit()
     }
 
     fun resume() {
-        if (!playing && !finished) media.play()
+        if (!mediaLoaded || released || finished || playing) return
+        playing = true
+        media.play()
+        emit()
     }
 
     fun stop() {
         media.stop()
+        mediaLoaded = false
         playing = false
         playingSeen = false
         finished = false
@@ -102,21 +126,23 @@ class EmbeddedPlaybackController internal constructor(
     }
 
     fun release() {
+        released = true
         media.listener = null
         media.stop()
         if (viewsAttached) media.detachViews()
         media.release()
         viewsAttached = false
+        mediaLoaded = false
         playing = false
         playingSeen = false
         finished = false
         pendingOffsetMillis = 0L
         offsetApplied = true
         overlay = null
-        emit()
     }
 
     private fun onMediaEvent(event: EmbeddedPlaybackEvent) {
+        if (released) return
         when (event) {
             EmbeddedPlaybackEvent.OPENING,
             EmbeddedPlaybackEvent.BUFFERING -> {
@@ -129,7 +155,6 @@ class EmbeddedPlaybackController internal constructor(
             EmbeddedPlaybackEvent.PLAYING,
             EmbeddedPlaybackEvent.VOUT -> {
                 playingSeen = true
-                playing = true
                 finished = false
                 overlay = null
                 if (!offsetApplied && pendingOffsetMillis > 0L) {
@@ -166,6 +191,7 @@ class EmbeddedPlaybackController internal constructor(
     }
 
     private fun emit() {
+        if (released) return
         onUi(EmbeddedPlaybackUiState(overlay, playing))
     }
 

@@ -9,6 +9,16 @@ import java.io.File
 
 class EmbeddedPlaybackControllerTest {
 
+    @Test fun playBeforeFirstLoadDoesNotTouchMedia() {
+        val media = FakeMedia()
+        val controller = EmbeddedPlaybackController(media, { it() }, { })
+
+        controller.playPause()
+        controller.resume()
+
+        assertTrue(media.events.isEmpty())
+    }
+
     @Test fun seekWhilePausedAppliesTimeToSamePlayer() {
         val media = FakeMedia()
         val controller = EmbeddedPlaybackController(media, { it() }, { })
@@ -20,6 +30,17 @@ class EmbeddedPlaybackControllerTest {
 
         assertEquals(65_000L, media.time)
         assertEquals(1, media.events.count { it.startsWith("setMedia:") })
+    }
+
+    @Test fun seekBeforeFirstFrameDefersUntilPlaying() {
+        val media = FakeMedia()
+        val controller = EmbeddedPlaybackController(media, { it() }, { })
+        controller.load(tempFile(), 60_000L)
+
+        controller.seek(75_000L)
+        media.emit(EmbeddedPlaybackEvent.PLAYING)
+
+        assertEquals(75_000L, media.time)
     }
 
     @Test fun seekAfterEndReachedReplaysAndAppliesRequestedTime() {
@@ -37,28 +58,37 @@ class EmbeddedPlaybackControllerTest {
         assertEquals(90_000L, media.time)
     }
 
-    @Test fun playAfterEndReachedKeepsPendingOffset() {
-        val media = FakeMedia()
-        val controller = EmbeddedPlaybackController(media, { it() }, { })
-        controller.load(tempFile(), 90_000L)
-        media.emit(EmbeddedPlaybackEvent.END_REACHED)
-
-        controller.playPause()
-        media.emit(EmbeddedPlaybackEvent.PLAYING)
-
-        assertEquals(90_000L, media.time)
-        assertTrue(media.events.contains("play"))
-    }
-
-    @Test fun releaseRemovesEventListener() {
+    @Test fun rapidPlayPauseTogglesSynchronously() {
         val media = FakeMedia()
         val controller = EmbeddedPlaybackController(media, { it() }, { })
         controller.load(tempFile(), 0L)
-        assertFalse(media.listener == null)
+        media.emit(EmbeddedPlaybackEvent.PLAYING)
+
+        controller.playPause()
+        assertFalse(controller.isPlaying)
+        controller.playPause()
+        assertTrue(controller.isPlaying)
+        assertEquals(2, media.events.count { it == "play" })
+        assertEquals(1, media.events.count { it == "pause" })
+    }
+
+    @Test fun releaseIgnoresEventsDispatchedAfterDestroy() {
+        val media = FakeMedia()
+        val states = mutableListOf<EmbeddedPlaybackUiState>()
+        val queued = mutableListOf<() -> Unit>()
+        val controller = EmbeddedPlaybackController(media, { queued += it }, states::add)
+        controller.load(tempFile(), 0L)
+        queued.forEach { it() }
+        media.emit(EmbeddedPlaybackEvent.PLAYING)
+        queued.forEach { it() }
+        media.emit(EmbeddedPlaybackEvent.END_REACHED)
 
         controller.release()
+        val afterRelease = states.size
+        queued.forEach { it() }
 
         assertNull(media.listener)
+        assertEquals(afterRelease, states.size)
         assertTrue(media.events.contains("detach"))
         assertTrue(media.events.contains("release"))
     }
@@ -69,10 +99,15 @@ class EmbeddedPlaybackControllerTest {
 
     private class FakeMedia : EmbeddedPlaybackMedia {
         override var listener: ((EmbeddedPlaybackEvent) -> Unit)? = null
+        private var frameReady = false
         override var time: Long = 0L
             set(value) {
-                field = value
-                events += "time=$value"
+                if (!frameReady) {
+                    events += "timeIgnored=$value"
+                } else {
+                    field = value
+                    events += "time=$value"
+                }
             }
         override val length: Long = 120_000L
         val events = mutableListOf<String>()
@@ -84,6 +119,7 @@ class EmbeddedPlaybackControllerTest {
         }
 
         override fun setMedia(file: File) {
+            frameReady = false
             events += "setMedia:${file.name}"
         }
 
@@ -104,6 +140,9 @@ class EmbeddedPlaybackControllerTest {
         }
 
         fun emit(event: EmbeddedPlaybackEvent) {
+            if (event == EmbeddedPlaybackEvent.PLAYING || event == EmbeddedPlaybackEvent.VOUT) {
+                frameReady = true
+            }
             listener?.invoke(event)
         }
     }
