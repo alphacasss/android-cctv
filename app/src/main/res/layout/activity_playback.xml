@@ -26,168 +26,231 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="12dp"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Kanal NVR"
-            android:textColor="@color/muted"
-            android:textSize="12sp" />
-
-        <Spinner
-            android:id="@+id/spinnerPlaybackChannel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <ImageButton
-                android:id="@+id/btnPlaybackPrevDay"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Hari sebelumnya"
-                android:src="@drawable/ic_chevron_left" />
-
-            <TextView
-                android:id="@+id/tvPlaybackDate"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:textColor="@color/text"
-                android:textSize="14sp" />
-
-            <ImageButton
-                android:id="@+id/btnPlaybackNextDay"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Hari berikutnya"
-                android:src="@drawable/ic_chevron_right" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnPlaybackDate"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:minWidth="0dp"
-                android:text="Tanggal"
-                android:textSize="12sp"
-                app:icon="@drawable/ic_calendar" />
-        </LinearLayout>
-
-        <com.google.android.material.button.MaterialButtonToggleGroup
-            android:id="@+id/filterPlayback"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            app:selectionRequired="true"
-            app:singleSelection="true">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/filterAll"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minWidth="0dp"
-                android:text="All"
-                android:textSize="12sp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/filterEvent"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minWidth="0dp"
-                android:text="Event"
-                android:textSize="12sp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/filterPerson"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minWidth="0dp"
-                android:text="Person"
-                android:textSize="12sp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/filterVehicle"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minWidth="0dp"
-                android:text="Vehicle"
-                android:textSize="12sp" />
-        </com.google.android.material.button.MaterialButtonToggleGroup>
 
         <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="72dp"
-            android:layout_marginTop="12dp"
-            android:background="@color/surface2">
+            android:layout_height="220dp"
+            android:background="@color/black">
 
-            <id.cctv.monitor.playback.PlaybackTimelineView
-                android:id="@+id/timelinePlayback"
+            <org.videolan.libvlc.util.VLCVideoLayout
+                android:id="@+id/videoPlayback"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:contentDescription="Bilah waktu rekaman" />
-
-            <ProgressBar
-                android:id="@+id/progressPlayback"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:visibility="gone" />
-        </FrameLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <ImageButton
-                android:id="@+id/btnPlaybackPrev"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Klip sebelumnya"
-                android:src="@drawable/ic_chevron_left" />
+                android:layout_height="match_parent" />
 
             <TextView
-                android:id="@+id/tvPlaybackTime"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:id="@+id/tvPlaybackVideoOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
                 android:gravity="center"
                 android:textColor="@color/text"
-                android:textSize="20sp" />
+                android:textSize="18sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvPlaybackVideoTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|start"
+                android:layout_margin="8dp"
+                android:background="@drawable/bg_chip"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:paddingStart="10dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="60dp"
+                android:paddingBottom="6dp"
+                android:text="Playback"
+                android:textColor="@color/text"
+                android:textSize="14sp"
+                android:textStyle="bold" />
 
             <ImageButton
-                android:id="@+id/btnPlaybackNext"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Klip berikutnya"
-                android:src="@drawable/ic_chevron_right" />
-        </LinearLayout>
+                android:id="@+id/btnPlaybackVideoPlayPause"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_gravity="top|end"
+                android:layout_margin="8dp"
+                android:background="@drawable/bg_chip_circle"
+                android:contentDescription="@string/controls"
+                android:padding="10dp"
+                android:src="@drawable/ic_pause"
+                android:tint="@color/text" />
+        </FrameLayout>
 
-        <TextView
-            android:id="@+id/tvPlaybackHint"
+        <ScrollView
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textColor="@color/muted"
-            android:textSize="13sp" />
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Kanal NVR"
+                    android:textColor="@color/muted"
+                    android:textSize="12sp" />
+
+                <Spinner
+                    android:id="@+id/spinnerPlaybackChannel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageButton
+                        android:id="@+id/btnPlaybackPrevDay"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Hari sebelumnya"
+                        android:src="@drawable/ic_chevron_left" />
+
+                    <TextView
+                        android:id="@+id/tvPlaybackDate"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:textColor="@color/text"
+                        android:textSize="14sp" />
+
+                    <ImageButton
+                        android:id="@+id/btnPlaybackNextDay"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Hari berikutnya"
+                        android:src="@drawable/ic_chevron_right" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnPlaybackDate"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:minWidth="0dp"
+                        android:text="Tanggal"
+                        android:textSize="12sp"
+                        app:icon="@drawable/ic_calendar" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/filterPlayback"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    app:selectionRequired="true"
+                    app:singleSelection="true">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/filterAll"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:minWidth="0dp"
+                        android:text="All"
+                        android:textSize="12sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/filterEvent"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:minWidth="0dp"
+                        android:text="Event"
+                        android:textSize="12sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/filterPerson"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:minWidth="0dp"
+                        android:text="Person"
+                        android:textSize="12sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/filterVehicle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:minWidth="0dp"
+                        android:text="Vehicle"
+                        android:textSize="12sp" />
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="72dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@color/surface2">
+
+                    <id.cctv.monitor.playback.PlaybackTimelineView
+                        android:id="@+id/timelinePlayback"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:contentDescription="Bilah waktu rekaman" />
+
+                    <ProgressBar
+                        android:id="@+id/progressPlayback"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageButton
+                        android:id="@+id/btnPlaybackPrev"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Klip sebelumnya"
+                        android:src="@drawable/ic_chevron_left" />
+
+                    <TextView
+                        android:id="@+id/tvPlaybackTime"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:textColor="@color/text"
+                        android:textSize="20sp" />
+
+                    <ImageButton
+                        android:id="@+id/btnPlaybackNext"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Klip berikutnya"
+                        android:src="@drawable/ic_chevron_right" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvPlaybackHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:textColor="@color/muted"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </ScrollView>
     </LinearLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
