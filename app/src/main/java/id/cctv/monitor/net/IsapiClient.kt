@@ -151,6 +151,14 @@ class IsapiClient(
                     target.delete()
                     throw IsapiException("Respons unduhan rekaman kosong.", code)
                 }
+                val expected = conn.contentLengthLong
+                if (expected > 0L && copied != expected) {
+                    target.delete()
+                    throw IsapiException(
+                        "Unduhan rekaman terputus: menerima $copied dari $expected byte.",
+                        code
+                    )
+                }
                 return code
             } catch (e: IsapiException) {
                 throw e

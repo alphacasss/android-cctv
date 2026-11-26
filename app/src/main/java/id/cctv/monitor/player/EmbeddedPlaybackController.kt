@@ -1,82 +1,68 @@
 package id.cctv.monitor.player
 
-import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import org.videolan.libvlc.LibVLC
-import org.videolan.libvlc.Media
-import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.util.VLCVideoLayout
 import java.io.File
 
 data class EmbeddedPlaybackUiState(
     val overlay: String?,
-    val playing: Boolean,
-    val elapsedMillis: Long,
-    val durationMillis: Long
+    val playing: Boolean
 )
 
 /** Satu MediaPlayer untuk video playback yang menempel di layar PlaybackActivity. */
-class EmbeddedPlaybackController(
-    private val libVlc: LibVLC,
-    private val videoLayout: VLCVideoLayout,
+class EmbeddedPlaybackController internal constructor(
+    private val media: EmbeddedPlaybackMedia,
+    private val dispatch: (() -> Unit) -> Unit,
     private val onUi: (EmbeddedPlaybackUiState) -> Unit
 ) {
 
-    private var player: MediaPlayer? = null
     private var viewsAttached = false
     private var overlay: String? = null
     private var playing = false
     private var playingSeen = false
     private var finished = false
-    private var elapsedMillis = 0L
-    private var durationMillis = 0L
     private var pendingOffsetMillis = 0L
     private var offsetApplied = false
-    private var lastTickAt = 0L
 
-    private val clock = Handler(Looper.getMainLooper())
-    private val timeTick = object : Runnable {
-        override fun run() {
-            tickTime()
-            clock.postDelayed(this, 500L)
-        }
+    init {
+        media.listener = { event -> dispatch { onMediaEvent(event) } }
     }
 
+    val isPlaying: Boolean get() = playing
+
     fun load(file: File, offsetMillis: Long) {
-        val target = offsetMillis.coerceAtLeast(0L)
-        pendingOffsetMillis = target
+        pendingOffsetMillis = offsetMillis.coerceAtLeast(0L)
         offsetApplied = false
-        elapsedMillis = target
-        durationMillis = 0L
         playing = false
         playingSeen = false
         finished = false
         overlay = "Memuat…"
         emit()
 
-        val active = player ?: createPlayer()
-        runCatching { active.stop() }
-        val media = Media(libVlc, Uri.fromFile(file)).apply {
-            addOption(":no-video-title-show")
-            addOption(":file-caching=300")
+        media.stop()
+        if (!viewsAttached) {
+            media.attachViews()
+            viewsAttached = true
         }
-        active.setMedia(media)
-        media.release()
-        active.play()
-
-        clock.removeCallbacks(timeTick)
-        clock.post(timeTick)
+        media.setMedia(file)
+        media.play()
     }
 
+    /** Geser slider: video yang sama dipindah, including saat pause atau setelah selesai. */
     fun seek(offsetMillis: Long) {
         val target = offsetMillis.coerceAtLeast(0L)
-        pendingOffsetMillis = target
-        elapsedMillis = target
-        offsetApplied = false
-        val active = player
-        if (active != null && playing) {
-            runCatching { active.time = target }
+        if (finished) {
+            pendingOffsetMillis = target
+            offsetApplied = false
+            finished = false
+            playingSeen = false
+            overlay = null
+            media.stop()
+            media.play()
+        } else {
+            media.time = target
             pendingOffsetMillis = 0L
             offsetApplied = true
         }
@@ -84,129 +70,93 @@ class EmbeddedPlaybackController(
     }
 
     fun playPause() {
-        val active = player ?: return
         if (finished) {
-            runCatching { active.stop() }
             finished = false
             playingSeen = false
-            elapsedMillis = 0L
-            pendingOffsetMillis = 0L
-            offsetApplied = true
-            active.play()
+            overlay = null
+            media.stop()
+            media.play()
+            emit()
             return
         }
-        if (playing) active.pause() else active.play()
+        if (playing) media.pause() else media.play()
     }
 
     fun pause() {
-        if (playing) player?.pause()
+        if (playing) media.pause()
     }
 
     fun resume() {
-        val active = player
-        if (active != null && !playing && !finished) active.play()
+        if (!playing && !finished) media.play()
     }
 
     fun stop() {
-        clock.removeCallbacks(timeTick)
-        runCatching { player?.stop() }
+        media.stop()
         playing = false
         playingSeen = false
-        lastTickAt = 0L
+        finished = false
+        pendingOffsetMillis = 0L
+        offsetApplied = true
+        overlay = null
         emit()
     }
 
     fun release() {
-        clock.removeCallbacks(timeTick)
-        val active = player ?: return
-        runCatching { active.stop() }
-        if (viewsAttached) {
-            runCatching { active.detachViews() }
-        }
-        runCatching { active.release() }
-        player = null
+        media.listener = null
+        media.stop()
+        if (viewsAttached) media.detachViews()
+        media.release()
         viewsAttached = false
-    }
-
-    private fun createPlayer(): MediaPlayer {
-        val active = MediaPlayer(libVlc)
-        active.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT)
-        active.setEventListener { event -> clock.post { onPlayerEvent(event.type) } }
-        active.attachViews(videoLayout, null, false, true)
-        viewsAttached = true
-        player = active
-        return active
-    }
-
-    private fun tickTime() {
-        val active = player ?: return
-        if (finished) return
-        val now = System.currentTimeMillis()
-        val vlcLength = runCatching { active.length }.getOrDefault(0L)
-        if (vlcLength > 0L) durationMillis = vlcLength
-        val vlcTime = runCatching { active.time }.getOrDefault(0L)
-        if (vlcTime > 0L) {
-            elapsedMillis = vlcTime
-        } else if (playing && lastTickAt > 0L) {
-            elapsedMillis += now - lastTickAt
-        }
-        lastTickAt = now
+        playing = false
+        playingSeen = false
+        finished = false
+        pendingOffsetMillis = 0L
+        offsetApplied = true
+        overlay = null
         emit()
     }
 
-    private fun onPlayerEvent(type: Int) {
-        when (type) {
-            MediaPlayer.Event.Opening,
-            MediaPlayer.Event.Buffering -> {
+    private fun onMediaEvent(event: EmbeddedPlaybackEvent) {
+        when (event) {
+            EmbeddedPlaybackEvent.OPENING,
+            EmbeddedPlaybackEvent.BUFFERING -> {
                 if (!playingSeen) {
                     overlay = "Memuat…"
                     emit()
                 }
             }
 
-            MediaPlayer.Event.Playing,
-            MediaPlayer.Event.Vout -> {
+            EmbeddedPlaybackEvent.PLAYING,
+            EmbeddedPlaybackEvent.VOUT -> {
                 playingSeen = true
                 playing = true
                 finished = false
                 overlay = null
                 if (!offsetApplied && pendingOffsetMillis > 0L) {
-                    runCatching { player?.time = pendingOffsetMillis }
-                    elapsedMillis = pendingOffsetMillis
+                    media.time = pendingOffsetMillis
                 }
                 pendingOffsetMillis = 0L
                 offsetApplied = true
                 emit()
             }
 
-            MediaPlayer.Event.Paused -> {
+            EmbeddedPlaybackEvent.PAUSED -> {
                 playing = false
                 emit()
             }
 
-            MediaPlayer.Event.TimeChanged -> {
-                if (!finished) {
-                    elapsedMillis = runCatching { player?.time ?: 0L }.getOrDefault(0L)
-                    emit()
-                }
-            }
+            EmbeddedPlaybackEvent.TIME_CHANGED,
+            EmbeddedPlaybackEvent.LENGTH_CHANGED -> Unit
 
-            MediaPlayer.Event.LengthChanged -> {
-                val length = runCatching { player?.length ?: 0L }.getOrDefault(0L)
-                if (length > 0L) durationMillis = length
-                emit()
-            }
-
-            MediaPlayer.Event.EndReached -> {
+            EmbeddedPlaybackEvent.END_REACHED -> {
                 playingSeen = false
                 playing = false
                 finished = true
-                elapsedMillis = durationMillis
                 overlay = "Selesai"
                 emit()
             }
 
-            MediaPlayer.Event.EncounteredError -> {
+            EmbeddedPlaybackEvent.ERROR -> {
                 playingSeen = false
                 playing = false
                 overlay = "Gagal memutar rekaman"
@@ -216,6 +166,21 @@ class EmbeddedPlaybackController(
     }
 
     private fun emit() {
-        onUi(EmbeddedPlaybackUiState(overlay, playing, elapsedMillis, durationMillis))
+        onUi(EmbeddedPlaybackUiState(overlay, playing))
+    }
+
+    companion object {
+        fun create(
+            libVlc: LibVLC,
+            videoLayout: VLCVideoLayout,
+            onUi: (EmbeddedPlaybackUiState) -> Unit
+        ): EmbeddedPlaybackController {
+            val handler = Handler(Looper.getMainLooper())
+            return EmbeddedPlaybackController(
+                VlcEmbeddedPlaybackMedia(libVlc, videoLayout),
+                { action -> handler.post(action) },
+                onUi
+            )
+        }
     }
 }

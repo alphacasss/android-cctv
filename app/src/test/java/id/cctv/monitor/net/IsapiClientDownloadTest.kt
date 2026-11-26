@@ -72,6 +72,33 @@ class IsapiClientDownloadTest {
         }
     }
 
+    @Test fun downloadToFile_truncatedBodyLeavesNoPartialFile() {
+        val dir = createTempDirectory("isapi-download").toFile()
+        val target = java.io.File(dir, "clip.mp4")
+        val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
+        val executor = Executors.newSingleThreadExecutor()
+        val served = executor.submit {
+            server.accept().use { socket ->
+                readRequest(socket)
+                respondWithDeclaredLength(socket, 200, 4096, ByteArray(128) { 7 })
+            }
+        }
+        try {
+            val client = IsapiClient("http://127.0.0.1:${server.localPort}", "u", "p")
+            val error = runCatching {
+                client.downloadToFile("/ISAPI/ContentMgmt/download/clip-42", target)
+            }.exceptionOrNull()
+            served.get(5, TimeUnit.SECONDS)
+
+            assertTrue(error is IsapiException)
+            assertFalse(target.exists())
+        } finally {
+            server.close()
+            executor.shutdownNow()
+            dir.deleteRecursively()
+        }
+    }
+
     @Test fun downloadToFile_httpFailureLeavesNoPartialFile() {
         val dir = createTempDirectory("isapi-download").toFile()
         val target = java.io.File(dir, "clip.mp4")
@@ -116,6 +143,19 @@ class IsapiClientDownloadTest {
             if (read < 0) break
             total += read
         }
+    }
+
+    private fun respondWithDeclaredLength(
+        socket: Socket,
+        code: Int,
+        declaredLength: Int,
+        body: ByteArray
+    ) {
+        val status = if (code == 200) "200 OK" else "500 Internal Server Error"
+        socket.getOutputStream().write(
+            "HTTP/1.1 $status\r\nContent-Length: $declaredLength\r\nConnection: close\r\n\r\n".toByteArray() + body
+        )
+        socket.getOutputStream().flush()
     }
 
     private fun respond(socket: Socket, code: Int, body: ByteArray) {

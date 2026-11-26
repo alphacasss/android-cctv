@@ -81,6 +81,7 @@ class PlaybackActivity : AppCompatActivity() {
     private var busy = false
     private var spinnerReady = false
     private var pendingSearch = false
+    private var userPaused = false
 
     private data class SearchContext(
         val camera: Camera,
@@ -113,12 +114,15 @@ class PlaybackActivity : AppCompatActivity() {
 
         downloader = PlaybackDownloader(this)
         cacheSession = PlaybackCacheSession()
-        embeddedPlayer = EmbeddedPlaybackController(
+        embeddedPlayer = EmbeddedPlaybackController.create(
             SharedVlc.get(applicationContext),
             findViewById<VLCVideoLayout>(R.id.videoPlayback),
             ::renderEmbeddedUi
         )
-        videoPlayPauseButton.setOnClickListener { embeddedPlayer?.playPause() }
+        videoPlayPauseButton.setOnClickListener {
+            userPaused = embeddedPlayer?.isPlaying ?: false
+            embeddedPlayer?.playPause()
+        }
 
         cameras = PlaybackUi.nvrCameras((application as CctvApp).prefs.cameras())
         channelSpinner.adapter = ArrayAdapter(
@@ -171,7 +175,7 @@ class PlaybackActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        embeddedPlayer?.resume()
+        if (!userPaused) embeddedPlayer?.resume()
     }
 
     override fun onStop() {
@@ -361,6 +365,7 @@ class PlaybackActivity : AppCompatActivity() {
                     val downloaded = downloader.download(clip, context.endpoint, context.user, context.pass)
                     setBusy(false)
                     downloaded.onSuccess { file ->
+                        userPaused = false
                         videoTitle.text = title
                         embeddedPlayer?.load(file, plan.offsetMillis)
                         val stale = cacheSession.adopt(key, file)
@@ -376,6 +381,7 @@ class PlaybackActivity : AppCompatActivity() {
     }
 
     private fun resetEmbeddedPlayback() {
+        userPaused = false
         embeddedPlayer?.stop()
         cacheSession.reset()
         downloader.clear()
